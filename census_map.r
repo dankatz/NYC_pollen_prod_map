@@ -40,7 +40,7 @@ nyc_block_density <- nyc_blocks %>%
   ) %>% 
   st_transform(., crs = 32618) #convert to EPSG 32618 for UTM 18N
   
-head(nyc_block_density)
+#head(nyc_block_density)
 #gut check: does this match the size of NYC? 
 #sum(nyc_block_density$area_sqkm) #yes, compared to ~1,220 km2
 #plot(nyc_block_density)
@@ -74,7 +74,7 @@ density_raster <- rasterize(
   fun = "mean"  # Use mean if multiple blocks overlap a cell
 )
 
-  writeRaster(density_raster, "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif", overwrite = TRUE)
+  writeRaster(density_raster, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif", overwrite = TRUE)
 
 #plot(density_raster)
 
@@ -167,5 +167,5 @@ ggplot() +
         panel.grid = element_blank())
 
 # Save the focal sum raster
-writeRaster(density_focal_sum, "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_1km_focal_sum.tif", overwrite = TRUE)
+writeRaster(density_focal_sum, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_1km_focal_sum.tif", overwrite = TRUE)
 

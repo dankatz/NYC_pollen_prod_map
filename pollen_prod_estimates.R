@@ -5,15 +5,20 @@
 library(sf)
 library(dplyr)
 library(readr)
+library(basemaps)
+library(terra)
+library(tidyterra)
+library(ggplot2)
 
 #read in prediction polygons from Dave
-trees_raw <- st_read("C:/Users/danka/Box/Katz lab/NYC/classifications/practical/v1/cls_poly_practical_v1_monthcomp.gpkg")
+trees_raw <- st_read("C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v1/cls_poly_practical_v1_monthcomp.gpkg")
 # head(trees)
 # plot(trees[1,1])
 # sf::plot_sf(trees[1:2, 1:2])
 
 #which genera will be included in the analysis
-genera_with_equations_and_classifications <- c("Acer", "Betula", "Gleditsia", "Morus", "Platanus", "Quercus", "Ulmus")
+genera_with_equations_and_classifications <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus",
+                                               "Populus", "Juglans", "Morus")
 
 #process the input dataset
 trees <- trees_raw %>% 
@@ -73,18 +78,28 @@ for(i in 1:100){ #for the final version of the manuscript, let's bump this up to
     
     #calculate per tree pollen production as a function of canopy area
     mutate(per_tree_pollen_prod = case_when(
-      Genus == "Acer" & Species == "negundo"  ~ ( Acne_param_a * tree_area_c + Acne_param_b) *0.558, #.558 is the sex ratio,
-      Genus == "Acer"  ~ Acpl_param_a * tree_area_c + Acpl_param_b,
-      Genus == "Acer" & Species == "rubrum"  ~ ( Acru_param_a * tree_area_c + Acru_param_b) * 0.106, #.106 is the sex ratio
-      Genus == "Acer" & Species == "saccharinum"~ Acsa_param_a * tree_area_c + Acsa_param_b, 
+      Genus == "Acer" & Species == "Acer negundo"  ~ ( Acne_param_a * tree_area_c + Acne_param_b) *0.558, #.558 is the sex ratio,
+      Genus == "Acer" & Species == "Acer platanoides" ~ Acpl_param_a * tree_area_c + Acpl_param_b,
+      Genus == "Acer" & Species == "Acer rubrum"  ~ ( Acru_param_a * tree_area_c + Acru_param_b) * 0.106, #.106 is the sex ratio
+      Genus == "Acer" & Species == "Acer saccharinum"~ Acsa_param_a * tree_area_c + Acsa_param_b, 
+      # for Acer trees with unknown species from classification, weight by average basal area of Acer species from 2013 i-Tree Eco sampling 
+      Genus == "Acer" & is.na(Species)  ~   0.6311 * (Acpl_param_a * tree_area_c + Acpl_param_b) +  #Acer platanoides
+                                            0.1713 * (( Acru_param_a * tree_area_c + Acru_param_b) * 0.106) + #Acer rubrum
+                                            0.1668 * (Acsa_param_a * tree_area_c + Acsa_param_b) + #Acer saccharinum
+                                            0.0011 * (( Acne_param_a * tree_area_c + Acne_param_b) *0.558), #Acer negundo
+      # assuming other species produce no pollen
+      # relative basal area of other Acer spp (unknown individuals, palmatum, psuedoplatanus, buergerianum, saccharum, campestre = 0.0377)
       Genus == "Betula"  ~ Bepa_param_a* tree_area_c + Bepa_param_b,
       Genus == "Gleditsia"  ~ Gltr_param_a * tree_area_c + Gltr_param_b,
       Genus == "Juglans"  ~ Juni_param_a * tree_area_c + Juni_param_b,
       Genus == "Morus"  ~ ((exp( Mosp_param_a * tree_area_c + Mosp_param_b) )/1000000000 ) * 0.578, #convert to billions and adjust for sex ratio
       Genus == "Platanus"  ~ Plac_param_a * tree_area_c + Plac_param_b,
       Genus == "Populus"  ~ ( Posp_param_a * tree_area_c + Posp_param_b) * 0.482, #adjust for sex ratio
-      Genus == "Quercus"  ~ Qusp_param_a * tree_area_c + Qusp_param_b, #red oaks and unknown oaks
-      Genus == "Quercus" & Species == "palustris"  ~ Qupa_param_a * tree_area_c + Qupa_param_b, #pin oaks
+      Genus == "Quercus" & !is.na(Species)  ~ Qusp_param_a * tree_area_c + Qusp_param_b, #red oaks and other non-pin oaks
+      Genus == "Quercus" & Species == "Quercus palustris"  ~ Qupa_param_a * tree_area_c + Qupa_param_b, #pin oaks
+      #for Quercus species from classification, weight by average basal area of Quercus species from 2013 i-Tree Eco sampling 
+      Genus == "Quercus" & is.na(Species)  ~ 0.6546 * (Qusp_param_a * tree_area_c + Qusp_param_b) + #red oaks and other oaks with species
+                                             0.3454 * (Qupa_param_a * tree_area_c + Qupa_param_b), 
       Genus == "Ulmus"  ~ ( Ulsp_param_a * tree_area_c + Ulsp_param_b)
     )) %>% 
     
@@ -142,15 +157,20 @@ tr_export_centroids_proj_full <- tr_export_centroids_proj %>%
 
 #export as a csv
 write_csv(tr_export_centroids_proj_full, 
-          "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251115.csv")
+          "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
 
 
 
 ### calculate pollen production within 1 km for each genus #####################################
-    
+
     # Get extent of NYC
     bbox <- st_bbox(tr_export_centroids_proj)
     
+    # download basemaps
+      nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+      nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+      
+
     # Create empty raster template with 100m resolution
     raster_template <- rast(
       xmin = bbox["xmin"],
@@ -161,10 +181,11 @@ write_csv(tr_export_centroids_proj_full,
       crs = st_crs(tr_export_centroids_proj)$wkt
     )
     
-    
     focal_genus_list <- unique(tr_export_centroids_proj$Genus)
+    
     for(i in 1:length(focal_genus_list)){
-    focal_genus <-  focal_genus_list[i] #focal_genus <- "Platanus" #Morus Acer Gleditsia Platanus
+    focal_genus <-  focal_genus_list[i] 
+    #focal_genus <- "Platanus" #Morus Acer Gleditsia Platanus
     tr_export_centroids_proj_quercus <- filter(tr_export_centroids_proj, Genus == focal_genus)
     
     # Convert sf to SpatVector for terra
@@ -191,7 +212,7 @@ write_csv(tr_export_centroids_proj_full,
     plot(prod_1km_focal_sum)
 
     writeRaster(prod_1km_focal_sum, 
-                paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                 "production_within_1km_", focal_genus, ".tif"), overwrite = TRUE)
     
     #a more detailed map
