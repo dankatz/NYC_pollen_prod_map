@@ -7,7 +7,7 @@ library(dplyr)
 library(readr)
 
 #read in prediction polygons from Dave
-trees_raw <- st_read("C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v1/cls_poly_practical_v1_monthcomp.gpkg")
+trees_raw <- st_read("C:/Users/danka/Box/Katz lab/NYC/classifications/practical/v1/cls_poly_practical_v1_monthcomp.gpkg")
 # head(trees)
 # plot(trees[1,1])
 # sf::plot_sf(trees[1:2, 1:2])
@@ -143,3 +143,64 @@ tr_export_centroids_proj_full <- tr_export_centroids_proj %>%
 #export as a csv
 write_csv(tr_export_centroids_proj_full, 
           "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251115.csv")
+
+
+
+### calculate pollen production within 1 km for each genus #####################################
+    
+    # Get extent of NYC
+    bbox <- st_bbox(tr_export_centroids_proj)
+    
+    # Create empty raster template with 100m resolution
+    raster_template <- rast(
+      xmin = bbox["xmin"],
+      xmax = bbox["xmax"],
+      ymin = bbox["ymin"],
+      ymax = bbox["ymax"],
+      resolution = 100,  # 100 meters
+      crs = st_crs(tr_export_centroids_proj)$wkt
+    )
+    
+    
+    focal_genus_list <- unique(tr_export_centroids_proj$Genus)
+    for(i in 1:length(focal_genus_list)){
+    focal_genus <-  focal_genus_list[i] #focal_genus <- "Platanus" #Morus Acer Gleditsia Platanus
+    tr_export_centroids_proj_quercus <- filter(tr_export_centroids_proj, Genus == focal_genus)
+    
+    # Convert sf to SpatVector for terra
+    tr_vect <- vect(tr_export_centroids_proj_quercus)
+    
+    # Rasterize using population density (per sq mile)
+    prod_raster <- rasterize(
+      tr_vect, 
+      raster_template, 
+      field = "pol_mean",
+      fun = "sum"  
+    ) #plot(prod_raster)
+    
+    
+    # Create a circular focal window
+    focal_matrix <- focalMat(prod_raster, d = 1000, type = "circle", fillNA = TRUE)
+    focal_matrix_no_weights <- focal_matrix
+    focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1    # Replace all values > 0 with 1 to create an unweighted window
+
+    #calculate pollen production within 1 km
+    prod_1km_focal_sum <-  focal( prod_raster, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
+    names(prod_1km_focal_sum) <- "prod_within_1km"
+    
+    plot(prod_1km_focal_sum)
+
+    writeRaster(prod_1km_focal_sum, 
+                paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+                "production_within_1km_", focal_genus, ".tif"), overwrite = TRUE)
+    
+    #a more detailed map
+    ggplot() + ggthemes::theme_few() + ggtitle(focal_genus) + 
+      geom_spatraster_rgb(data = nyc_topo_spatrast) +
+      geom_spatraster(data = prod_1km_focal_sum/1000, alpha = 0.6) +
+      scale_fill_viridis_c(na.value = "transparent", 
+                           #option = "plasma",
+                           name = "pollen produced within 1 km \n (trillions of grains)",
+                           labels = scales::label_comma())
+    
+    }

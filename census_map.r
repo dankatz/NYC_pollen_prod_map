@@ -1,5 +1,9 @@
-# Project: UPPH '25 map of pollen production in NYC
-# For any questions or comments, contact Dan Katz, Cornell University
+# Project: Pollen production and exposure in NYC
+# Class: PLSCI 4450/6450 Urban Plants and Public Health
+# Contact: Dan Katz, Cornell University
+# 
+# This script is for downloading population density from the US census 
+# and for calculating the number of people that live within a certain distance of each point
 
 
 #set up work environment
@@ -11,7 +15,7 @@ library(ggplot2)
 library(sf)
 library(terra)
 
-census_api_key("INSERT YOUR CENSUS KEY HERE", install = TRUE, overwrite = TRUE)
+#census_api_key("INSERT YOUR CENSUS KEY HERE", install = TRUE, overwrite = TRUE)
 
 ### download census population data and rasterize ################################################
 
@@ -70,6 +74,8 @@ density_raster <- rasterize(
   fun = "mean"  # Use mean if multiple blocks overlap a cell
 )
 
+  writeRaster(density_raster, "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif", overwrite = TRUE)
+
 #plot(density_raster)
 
 # Create a more detailed ggplot visualization
@@ -96,6 +102,29 @@ ggplot() +
     subtitle = "2020 Decennial Census",
     x = NULL,
     y = NULL)
+
+
+
+
+
+#load in nyc boundary polygon
+
+nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+
+density_raster_no_zeros <- density_raster
+density_raster_no_zeros[density_raster_no_zeros == 0] <- NA
+
+# create map
+ggplot() + ggthemes::theme_few() +   
+  geom_spatraster_rgb(data = nyc_topo_spatrast) +
+  geom_spatraster(data = density_raster, alpha = 0.7) +
+  scale_fill_viridis_c(na.value = "transparent", 
+                       #option = "magma",
+                       name = "population density \n(residents per ha)",
+                       labels = scales::label_comma())
+
+
 
 
 ### sum population within 1 km of a cell #######################################
@@ -138,5 +167,5 @@ ggplot() +
         panel.grid = element_blank())
 
 # Save the focal sum raster
-writeRaster(density_focal_sum, "nyc_pop_density_1km_focal_sum.tif", overwrite = TRUE)
+writeRaster(density_focal_sum, "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_1km_focal_sum.tif", overwrite = TRUE)
 
