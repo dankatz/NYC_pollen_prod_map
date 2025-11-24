@@ -167,7 +167,7 @@ write_csv(tr_export_centroids_proj_full,
 ### calculate pollen production on a 1 ha raster for each genus #####################################
 
 #reload data from previous step if necessary
-# tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
+# tr_export_centroids_proj_full <- read_csv("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
 # tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
 
     # Get extent of NYC
@@ -192,7 +192,7 @@ write_csv(tr_export_centroids_proj_full,
     
     for(i in 1:length(focal_genus_list)){
     focal_genus <-  focal_genus_list[i] 
-    #focal_genus <- "Platanus" #Morus Acer Gleditsia Platanus
+    #focal_genus <- "Quercus" #Morus Acer Gleditsia Platanus
     tr_export_centroids_proj_quercus <- filter(tr_export_centroids_proj, Genus == focal_genus)
     
     # Convert sf to SpatVector for terra
@@ -212,13 +212,13 @@ write_csv(tr_export_centroids_proj_full,
                        "production_1ha_", focal_genus, ".tif"), overwrite = TRUE)
     
     # #a more detailed map of just pollen production
-    # ggplot() + ggthemes::theme_few() + ggtitle(focal_genus) +
-    #   geom_spatraster_rgb(data = nyc_topo_spatrast) +
-    #   geom_spatraster(data = prod_raster, alpha = 0.6) +
-    #   scale_fill_viridis_c(na.value = "transparent",
-    #                        #option = "plasma",
-    #                        name = "pollen produced  \n (billions of grains)",
-    #                        labels = scales::label_comma())
+    ggplot() + ggthemes::theme_few() + ggtitle(focal_genus) +
+      geom_spatraster_rgb(data = nyc_topo_spatrast) +
+      geom_spatraster(data = prod_raster, alpha = 0.6) +
+      scale_fill_viridis_c(na.value = "transparent",
+                           #option = "plasma",
+                           name = "pollen produced  \n (billions of grains)",
+                           labels = scales::label_comma())
 
     }
 
@@ -290,4 +290,22 @@ write_csv(tr_export_centroids_proj_full,
                            labels = scales::label_comma())
     
   }
+  
+  
+  
+### compare tree pollen production with and without tree classification data ###########################
+  #reload data from previous step if necessary
+  # tr_export_centroids_proj_full <- read_csv("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
+  # tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
+  
+tr_export_centroids_proj %>% 
+    st_drop_geometry() %>% 
+    mutate(is_st_tree = case_when(is.na(Species) ~ "classified",
+                                  !is.na(Species) ~ "street tree")) %>% 
+    group_by(is_st_tree, Genus) %>% 
+    summarize(total_pollen = sum(pol_mean, na.rm = TRUE)) %>%
+    mutate(rel_pollen = total_pollen/sum(tr_export_centroids_proj$pol_mean, na.rm = TRUE) * 100) %>% 
+    ggplot(aes(x = Genus, y = total_pollen/1000000, fill = is_st_tree)) + geom_col(position = position_dodge2(preserve = "single")) + theme_bw() + 
+    ylab("pollen production (quadrillions of grains)") + 
+    scale_fill_discrete(name = "data source") + theme(axis.text.x = element_text(face = "italic"))
   

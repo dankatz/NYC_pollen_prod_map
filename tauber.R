@@ -19,7 +19,7 @@ focal_genus_list <- c("Acer", "Betula", "Gleditsia", "Morus", "Platanus", "Querc
 
 
 ### load in pollen sample data ######################################
-taub_raw <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/2013_NYCPSdataentry_forDanKatz_data_tab.csv")
+taub_raw <- read_csv("C:/Users/danka/Box/NYC projects/pollen data/2013_NYCPSdataentry_forDanKatz_data_tab.csv")
 
 #use the same samples in analysis as Kate did
 taub_f <- taub_raw %>% 
@@ -41,29 +41,43 @@ taub_f <- taub_raw %>%
 ### load in pollen production rasters ###############################
 
   #load in pollen production rasters
-  prod_rast <- rast("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_Quercus.tif")
+  prod_rast <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_Quercus.tif")
   plot(prod_rast)
   
-### threshold function ######################
-fun_thresh <- function(param_dist){
+### threshold function to compare airborne pollen to predicted pollen within X meters ######################
+
+fun_thresh <- function(focal_genus, param_dist){
   
+  #load in the pollen production raster for that genus 
+    prod_rast_focal_raw <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_",
+  focal_genus, ".tif"))
+    
+    
+  #choose airborne pollen genus
+  taub_f_focal <- taub_f %>% 
+    mutate(Influx_focal = case_when(focal_genus == "Quercus" ~ Influx_que,
+                                    focal_genus == "Acer" ~ Influx_acer,
+                                    focal_genus == "Platanus" ~ Influx_plat,
+                                    focal_genus == "Betula" ~ Influx_bet,
+                                    focal_genus == "trees" ~ Influx_trees)) #Influx_plat Influx_acer Influx_bet Influx_que  Influx_trees
+
   # Create a circular focal window
-  focal_matrix <- focalMat(prod_rast, d = param_dist, type = "circle", fillNA = TRUE)
+  focal_matrix <- focalMat(prod_rast_focal_raw, d = param_dist, type = "circle", fillNA = TRUE)
   #focal_matrix <- focalMat(prod_rast, d = 400, type = "circle", fillNA = TRUE)
   focal_matrix_no_weights <- focal_matrix
   focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1    # Replace all values > 0 with 1 to create an unweighted window
   
   #calculate pollen production within distance
-  prod_rast_focal <-  focal( prod_rast, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
+  prod_rast_focal <-  focal( prod_rast_focal_raw, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
   names(prod_rast_focal) <- "prod_within_dist"
   #return(prod_rast_focal)
   
   #extract data from production surface 
-  taub_f_comp <- taub_f %>% 
+  taub_f_comp <- taub_f_focal %>% 
     cbind(., poll_prod_genus = terra::extract(prod_rast_focal, taub_f, ID = FALSE))
   
   #linear model
-  fit <- lm(Influx_que ~ #NEED TO CHANGE THIS TO MATCH INPUT GENUS
+  fit <- lm(Influx_focal ~ 
               prod_within_dist, data = taub_f_comp)
   lm_r2 <- summary(fit)$r.squared
   lm_r2_adj <- summary(fit)$adj.r.squared
@@ -77,59 +91,95 @@ fun_thresh <- function(param_dist){
 
 
 
-### apply to list of values ##########################################
+### apply function to compare airborne pollen to predicted pollen production at X distance ##########################################
 
-#threshold  
-dist_df <- data.frame(dist = seq.int(100, 3000, by = 100),
-                      r2 = NA)
+#set up dataframe to hold results  
+dist_df <- expand_grid(focal_genus =  c("Quercus", "Platanus", "Acer", "Betula"),
+                       param_dist = seq.int(100, 5000, by = 100)) 
+    
+#apply the comparison threshold function to each row of the dataframe
+  dist_result <-  dist_df %>% 
+    mutate(r2 = map2_dbl(focal_genus, param_dist, fun_thresh))
   
-for(k in 1:nrow(dist_df)){
-  dist_df$r2[k] <- fun_thresh(dist_df$dist[k])  #test <- fun_thresh(500)
-#output_r2[i] <- fun_compare(test)
+  # for loop version for error checks 
+  # for(k in 2:2){
+  #   dist_df$r2[k] <- fun_thresh(focal_genus = dist_df$focal_genus[k], param_dist = dist_df$param_dist[k])  #test <- fun_thresh(500)
+  # #output_r2[i] <- fun_compare(test)
+  # }
+  
+
+### Fig SI X: Relationship between airborne pollen and pollen measurements across threshold distances
+ggplot(dist_result, aes(x = param_dist, y = r2, color = focal_genus)) + geom_point() + geom_line() + theme_bw() + 
+  scale_color_discrete(name = "genus")+ xlab("threshold distance (m)") + ylab(bquote("linear model fit (R"^2~")"))+
+  theme(legend.text = element_text(face = "italic"))
+
+
+
+
+
+### scatter plot of pollen production to airborne pollen ###################################
+
+air_vs_prod_fun <- function(focal_genus){
+
+  #focal_genus <- "Quercus"
+  #load in the pollen production raster for that genus 
+  prod_400m_focal <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/production_within_400m_",
+                                     focal_genus, ".tif"))
+  # prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+  #                                   "production_within_400m_Quercus.tif"))
+  #plot(prod_400m_focal_sum)
+  
+  #choose airborne pollen genus
+  taub_f_focal <- taub_f %>% 
+    mutate(Influx_focal = case_when(focal_genus == "Quercus" ~ Influx_que,
+                                    focal_genus == "Acer" ~ Influx_acer,
+                                    focal_genus == "Platanus" ~ Influx_plat,
+                                    focal_genus == "Betula" ~ Influx_bet,
+                                    focal_genus == "trees" ~ Influx_trees)) #Influx_plat Influx_acer Influx_bet Influx_que  Influx_trees
+  
+  #extract data from production surface 
+  taub_f_plot <- taub_f_focal %>% 
+    cbind(., poll_prod_focal = terra::extract(prod_400m_focal, taub_f, ID = FALSE)) %>% 
+    rename(poll_prod_focal = prod_within_400m)
+  
+  #compare measurements to production surface
+  fit <- lm(Influx_focal ~ poll_prod_focal, data = taub_f_plot)
+  fit_r2 <- round(summary(fit)$r.squared,2)
+  # fit_pval <- summary(fit)$coefficients[, "Pr(>|t|)"][2]
+  # fit_pval <- ifelse(fit_pval < 0.001, "0.001", round(p_value, 3))
+  
+  air_prod_scatter <-
+    ggplot(taub_f_plot, aes(x = poll_prod_focal/1000 , y = Influx_focal )) + geom_point() + theme_bw() + geom_smooth(method = "lm") +
+    xlab("pollen production within 400 m (trillions of grains)") + ylab(bquote(airborne~pollen~(grains/cm^2)))+
+    annotate("text", hjust = -0.5, vjust = 1.5,x = -Inf, y = Inf, label = focal_genus, fontface = "italic") + 
+    annotate("text", hjust = -0.5, vjust = 2.5,x = -Inf, y = Inf, 
+             label = paste0("R^2 == ", fit_r2), parse = TRUE) 
+    # annotate("text", hjust = -0.5, vjust = 5.5,x = -Inf, y = Inf, 
+    #          label = paste0("p < ", fit_pval), parse = FALSE) 
+  
+  #a more detailed map for comparison
+  # air_prod_map <-
+  #   ggplot() + ggthemes::theme_few() + ggtitle("Quercus") + 
+  #   geom_spatraster_rgb(data = nyc_topo_spatrast) +
+  #   geom_spatraster(data = prod_400m_focal/1000, alpha = 0.6) +
+  #   geom_sf(data = taub_f_plot, aes(color = Influx_focal), size = 3) + 
+  #   scale_fill_viridis_c(na.value = "transparent", 
+  #                        #option = "plasma",
+  #                        name = "pollen produced within 1 km \n (trillions of grains)",
+  #                        labels = scales::label_comma())+
+  #   scale_color_viridis_c(option = "magma", name = bquote(airborne~pollen~(grains/cm^2)))
+
+return(air_prod_scatter)
 }
-  
-
-dist_df  %>% arrange(-r2) %>% head()
-  
-ggplot(dist_df, aes(x = dist, y = r2)) + geom_point() + theme_bw()
 
 
+scatter_panels <- map( c("Quercus", "Acer", "Platanus","Betula"),air_vs_prod_fun)
+plot_grid(plotlist = scatter_panels)
 
-  
-
-
-### detailed investigation of a particular scenario to compare map of pollen production to airborne pollen ###################################
-prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
-                                  "production_within_400m_Quercus.tif"))
-#plot(prod_400m_focal_sum)
-
-#extract data from production surface 
-taub_f_plot <- taub_f %>% 
-  cbind(., poll_prod_que = terra::extract(prod_1km_focal_sum, taub_f, ID = FALSE))
-
-
-#compare measurements to production surface
-ggplot(taub_f_plot, aes(x = prod_within_400m , y = Influx_que )) + geom_point() + theme_bw() + geom_smooth(method = "lm")
-
-fit <- lm(Influx_que ~ prod_within_1km, data = taub_f)
-summary(fit)
-
-## save outputs
-
-
-#a more detailed map for comparison
-ggplot() + ggthemes::theme_few() + ggtitle("Quercus") + 
-  geom_spatraster_rgb(data = nyc_topo_spatrast) +
-  geom_spatraster(data = prod_rast/1000, alpha = 0.6) +
-  geom_sf(data = taub_f, aes(color = Influx_que), size = 3) + 
-  scale_fill_viridis_c(na.value = "transparent", 
-                       #option = "plasma",
-                       name = "pollen produced within 1 km \n (trillions of grains)",
-                       labels = scales::label_comma())+scale_color_viridis_c(option = "magma")
 
 #plot(prod_1km_focal_sum)
 # writeRaster(prod_1km_focal_sum, 
-#             paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
+#             paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
 #                    "production_within_1km_", focal_genus, ".tif"), overwrite = TRUE)
 
 
@@ -210,7 +260,7 @@ ggplot() + ggthemes::theme_few() + ggtitle("Quercus") +
 #     #return(prod_rast_focal)
 #     #plot(prod_rast_focal) #plot(prod_rast)
 #     # writeRaster(prod_1km_focal_sum, 
-#     #             paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
+#     #             paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
 #     #                    "production_within_1km_", focal_genus, ".tif"), overwrite = TRUE)
 #   }
 #   

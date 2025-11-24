@@ -175,7 +175,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
             label_x = 0.3, label_y = 1.01)
       
       
-### visualizing a map of pollen exposure (pollen within 400 m x population density) #######################################
+### visualizing a single map of pollen exposure (pollen within 400 m x population density) #######################################
  #loop through species
  focal_genus_list <- c("Acer", "Betula", "Gleditsia", "Morus", "Platanus", "Quercus", "Ulmus", "Populus", "Juglans")
  for(i in 1:length(focal_genus_list)){
@@ -230,7 +230,6 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   density_raster <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif")
   #plot(density_raster)    
   
-
   
   #create a function that produces a map panel
   fun_expo_map_genus <- function(focal_genus){    
@@ -247,20 +246,23 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
     pop_prod_rast <- density_raster * prod_400m_focal_sum
     
     #convert from billions of pollen grains to trillions
-    pop_prod_rast <- pop_prod_rast/ 1000
+    pop_prod_rast <- (pop_prod_rast/ 1000) + 1
     
     # create map
     focal_map_panel <-   
       ggplot() + #ggthemes::theme_few() +   
       geom_spatraster_rgb(data = nyc_topo_spatrast) +
-      geom_spatraster(data = pop_prod_rast, alpha = 0.8) +
+      geom_spatraster(data = pop_prod_rast) +
       scale_fill_viridis_c(na.value = "transparent", 
                            option = "turbo",
                            name = expression(     atop(
                                                   #atop(textstyle("potential"),
                                                        textstyle("exposure"),
                                                   "("~10^18~"grains x people)")),
-                           labels = scales::label_comma()) +
+                           labels = scales::label_comma()
+                           #trans = "log10"
+                           #limits = c(10000, max(pop_prod_rast))
+                           ) +
       theme(  
         legend.position = c(0.05, 0.95),  # Places the legend at the top-left corner
         legend.justification = c(0.05, 0.98),# Aligns the legend box to its top-left corner)
@@ -280,9 +282,161 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   
   #create list of maps
-  focal_genus_panels <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus")
+  focal_genus_panels <- c("Acer", "Gleditsia", "Platanus", "Quercus", "Ulmus") #"Betula", 
   map_panel_list <- map(focal_genus_panels, fun_expo_map_genus)
   
+  #create a custom map for density of people 
+  # create map
+  pop_den_map_panel <- ggplot() +  
+    geom_spatraster_rgb(data = nyc_topo_spatrast) +
+    geom_spatraster(data = density_raster) +
+    scale_fill_viridis_c(na.value = "transparent", 
+                         option = "magma",
+                         name = "people with asthma \n(people per ha)",
+                         labels = scales::label_comma()) +
+    theme(  
+      legend.position = c(0.00, 0.95),  # Places the legend at the top-left corner
+      legend.justification = c(0.00, 0.98),# Aligns the legend box to its top-left corner)
+      legend.title = element_text(size = 8),
+      legend.text = element_text(size = 8),
+      axis.title=element_blank(),
+      axis.text=element_blank(),
+      axis.ticks=element_blank(), 
+      plot.margin = unit(c(0.3, 0, 0, 0), "cm"),
+      plot.background = element_rect(fill = "white", color = "white"),
+      panel.background = element_rect(fill = "white")) #+ ggtitle(focal_genus)
+  
+  
+  #with the population density map as the first panel
+  plot_grid(plotlist = c(pop_den_map_panel, map_panel_list), ncol = 2,
+            labels = c( "A: people with asthma",
+                        bquote(paste("B) "~italic("Acer"))),
+                        bquote(paste("C) "~italic("Gleditsia"))),
+                        bquote(paste("D) "~italic("Platanus"))),
+                        bquote(paste("E) "~italic("Quercus"))),
+                        bquote(paste("F) "~italic("Ulmus")))),
+            label_x = 0.3, label_y = 1.01)
+   
+  # plot_grid(plotlist = map_panel_list, ncol = 2,
+  #           labels = c( bquote(paste("A) "~italic("Acer"))),
+  #                       bquote(paste("B) "~italic("Betula"))),
+  #                       bquote(paste("C) "~italic("Gleditsia"))),
+  #                       bquote(paste("D) "~italic("Platanus"))),
+  #                       bquote(paste("E) "~italic("Quercus"))),
+  #                       bquote(paste("F) "~italic("Ulmus")))), 
+  #           label_fontface = "italic",
+  #           label_x = 0.3, label_y = 1.01)
+  
+
+  
+  
+### panel of potential asthma exposure within 400 m for all tree taxa #############################################################
+  #pre load map elements
+  #load in nyc boundary polygon
+  nyc_boundary <- st_read( "C:/Users/danka/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+    st_union() %>% #combine the different boroughs
+    st_transform(., crs = 32618)
+  #nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= 32618)
+  # nyc_boundary_invert <- st_difference(nyc_boundary_box, nyc_boundary)
+  
+  nyc_topo_rast <- basemap_raster(nyc_boundary, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+  nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+  
+  #load population density raster
+  asthma_raster <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_people_with_asthma.tif")
+  #plot(asthma_raster)    
+  
+  
+  
+  #create a function that produces a map panel
+  fun_asthma_expo_map_genus <- function(focal_genus){    
+    
+    # load raster of pollen production within 400 m for a genus
+    prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+                                       "production_within_400m_", focal_genus, ".tif")) %>% 
+      # prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+      #                                    "production_within_400m_", "Quercus", ".tif")) %>% 
+      extend(., asthma_raster) %>% 
+      resample(., asthma_raster, method="bilinear")
+    
+    #multiply the rasters to get exposure in people x pollen within 400 m
+    pop_prod_rast <- asthma_raster * prod_400m_focal_sum
+    
+    #convert from billions of pollen grains to trillions
+    pop_prod_rast <- (pop_prod_rast/ 1000) + 1
+    
+    # create map
+    focal_map_panel <-   
+      ggplot() + #ggthemes::theme_few() +   
+      geom_spatraster_rgb(data = nyc_topo_spatrast) +
+      geom_spatraster(data = pop_prod_rast) +
+      scale_fill_viridis_c(na.value = "transparent", 
+                           option = "magma",
+                           name = expression(     atop(
+                             #atop(textstyle("potential"),
+                             textstyle("exposure"),
+                             "("~10^18~"grains x people)")),
+                           labels = scales::label_comma()
+                           #trans = "log10"
+                           #limits = c(10000, max(pop_prod_rast))
+      ) +
+      theme(  
+        legend.position = c(0.00, 0.95),  # Places the legend at the top-left corner
+        legend.justification = c(0.00, 0.98),# Aligns the legend box to its top-left corner)
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8),
+        axis.title=element_blank(),
+        axis.text=element_blank(),
+        axis.ticks=element_blank(), 
+        plot.margin = unit(c(0.3, 0, 0, 0), "cm"),
+        #plot.background = element_blank(),
+        plot.background = element_rect(fill = "white", color = "white"),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(face = "italic")) #+ ggtitle(focal_genus)
+    
+    return(focal_map_panel)
+  } #end map making function
+  
+  
+  #create list of maps
+  focal_genus_panels <- c("Acer", "Gleditsia", "Platanus", "Quercus", "Ulmus")
+  map_panel_list <- map(focal_genus_panels, fun_asthma_expo_map_genus)
+  
+  
+  #create a custom map for density of people with asthma 
+  # create map
+  asthma_map_panel <- ggplot() +  
+    geom_spatraster_rgb(data = nyc_topo_spatrast) +
+    geom_spatraster(data = asthma_raster) +
+    scale_fill_viridis_c(na.value = "transparent", 
+                         option = "magma",
+                         name = "people with asthma \n(people per ha)",
+                         labels = scales::label_comma()) +
+    theme(  
+      legend.position = c(0.00, 0.95),  # Places the legend at the top-left corner
+      legend.justification = c(0.00, 0.98),# Aligns the legend box to its top-left corner)
+      legend.title = element_text(size = 8),
+      legend.text = element_text(size = 8),
+      axis.title=element_blank(),
+      axis.text=element_blank(),
+      axis.ticks=element_blank(), 
+      plot.margin = unit(c(0.3, 0, 0, 0), "cm"),
+      plot.background = element_rect(fill = "white", color = "white"),
+      panel.background = element_rect(fill = "white")) #+ ggtitle(focal_genus)
+  
+  
+  #with the asthma map as the first panel
+  plot_grid(plotlist = c(asthma_map_panel, map_panel_list), ncol = 2,
+            labels = c( "A: people with asthma",
+                        bquote(paste("B) "~italic("Acer"))),
+                        bquote(paste("C) "~italic("Gleditsia"))),
+                        bquote(paste("D) "~italic("Platanus"))),
+                        bquote(paste("E) "~italic("Quercus"))),
+                        bquote(paste("F) "~italic("Ulmus")))),
+            label_x = 0.3, label_y = 1.01)
+  
+  
+  #without the asthma map as a panel #will need to rerun to include Betula here
   plot_grid(plotlist = map_panel_list, ncol = 2,
             labels = c( bquote(paste("A) "~italic("Acer"))),
                         bquote(paste("B) "~italic("Betula"))),
