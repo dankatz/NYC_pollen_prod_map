@@ -14,12 +14,14 @@ library(tidyr)
 library(ggplot2)
 library(sf)
 library(terra)
+library(purrr)
+library(cowplot)
 
 focal_genus_list <- c("Acer", "Betula", "Gleditsia", "Morus", "Platanus", "Quercus", "Ulmus", "Populus", "Juglans")
 
 
 ### load in pollen sample data ######################################
-taub_raw <- read_csv("C:/Users/danka/Box/NYC projects/pollen data/2013_NYCPSdataentry_forDanKatz_data_tab.csv")
+taub_raw <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/2013_NYCPSdataentry_fordankatz_data_tab.csv")
 
 #use the same samples in analysis as Kate did
 taub_f <- taub_raw %>% 
@@ -41,7 +43,7 @@ taub_f <- taub_raw %>%
 ### load in pollen production rasters ###############################
 
   #load in pollen production rasters
-  prod_rast <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_Quercus.tif")
+  prod_rast <- rast("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_Quercus.tif")
   plot(prod_rast)
   
 ### threshold function to compare airborne pollen to predicted pollen within X meters ######################
@@ -49,7 +51,7 @@ taub_f <- taub_raw %>%
 fun_thresh <- function(focal_genus, param_dist){
   
   #load in the pollen production raster for that genus 
-    prod_rast_focal_raw <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_",
+    prod_rast_focal_raw <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_",
   focal_genus, ".tif"))
     
     
@@ -123,9 +125,9 @@ air_vs_prod_fun <- function(focal_genus){
 
   #focal_genus <- "Quercus"
   #load in the pollen production raster for that genus 
-  prod_400m_focal <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/production_within_400m_",
+  prod_400m_focal <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_within_400m_",
                                      focal_genus, ".tif"))
-  # prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+  # prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
   #                                   "production_within_400m_Quercus.tif"))
   #plot(prod_400m_focal_sum)
   
@@ -179,7 +181,7 @@ plot_grid(plotlist = scatter_panels)
 
 #plot(prod_1km_focal_sum)
 # writeRaster(prod_1km_focal_sum, 
-#             paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+#             paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
 #                    "production_within_1km_", focal_genus, ".tif"), overwrite = TRUE)
 
 
@@ -260,7 +262,7 @@ plot_grid(plotlist = scatter_panels)
 #     #return(prod_rast_focal)
 #     #plot(prod_rast_focal) #plot(prod_rast)
 #     # writeRaster(prod_1km_focal_sum, 
-#     #             paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+#     #             paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
 #     #                    "production_within_1km_", focal_genus, ".tif"), overwrite = TRUE)
 #   }
 #   

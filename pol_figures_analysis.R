@@ -22,13 +22,13 @@ library(cowplot)
 
 ### load in tree pollen production estimates
 # these were created in the 'pollen_prod_estimates.R' script
-tr_export_centroids_proj_full_csv <- read_csv( "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
+tr_export_centroids_proj_full_csv <- read_csv( "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
 tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full_csv, coords = c("x_EPSG_32618" , "y_EPSG_32618"),
                                           crs = 32618)
 
 ## load in census population density
 # these were created in the 'census_map.R' script
-density_focal_sum <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_400m_focal_sum.tif")
+density_focal_sum <- rast("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_400m_focal_sum.tif")
 
 ## extract population density for each tree 
 tr_export_centroids_proj
@@ -42,8 +42,8 @@ polpop_df <- polpop %>% st_drop_geometry(.)
 
 ### visualize results ###################################################
 
-#Histogram of pollen exposure for each tree by genus
-ggplot(polpop_df, aes(x = pop_pol)) + geom_histogram() + facet_wrap(~Genus, scales = "free") + theme_bw() + scale_x_log10()
+# #Histogram of pollen exposure for each tree by genus
+# ggplot(polpop_df, aes(x = pop_pol)) + geom_histogram() + facet_wrap(~Genus, scales = "free") + theme_bw() + scale_x_log10()
 
 #cdf plot
 ggplot(polpop_df, aes(x = pop_pol + 1, color = Genus)) + stat_ecdf(geom = "step", pad = FALSE) + theme_bw() + scale_x_log10() +
@@ -75,13 +75,13 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
        
 
 # map of tree pollen within 400 m for a single genus
-    prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+    prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                        "production_within_400m_", "Quercus", ".tif"))
     plot(prod_400m_focal_sum)
     hist(prod_400m_focal_sum)
     
     #load in nyc boundary polygon
-    nyc_boundary <- st_read( "C:/Users/danka/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+    nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
       st_union() %>% #combine the different boroughs
       st_transform(., crs = 32618)
         #nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= 32618)
@@ -114,7 +114,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
 ### panel figure of pollen production within 400 m for all tree taxa #############################################################
  #pre load map elements
     #load in nyc boundary polygon
-      nyc_boundary <- st_read( "C:/Users/danka/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+      nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
         st_union() %>% #combine the different boroughs
         st_transform(., crs = 32618)
       #nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= 32618)
@@ -128,7 +128,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   fun_prod_map_genus <- function(focal_genus){    
       
       # load raster of pollen production within 400 m for a genus
-      prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+      prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                                          "production_within_400m_", focal_genus, ".tif"))
  
       #shrink everything above the 99th percentile of values to 99% for more effective visualization
@@ -154,7 +154,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
                 axis.title=element_blank(),
                 axis.text=element_blank(),
                 axis.ticks=element_blank(), 
-                plot.margin = unit(c(0.5, 0, 0, 0), "cm"),
+                plot.margin = unit(c(0.1, 0, 0, 0), "cm"),
                 #plot.background = element_blank(),
                 plot.background = element_rect(fill = "white", color = "white"),
                 panel.background = element_rect(fill = "white"),
@@ -166,9 +166,9 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
 #create list of maps
   focal_genus_panels <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus")
-  test <- map(focal_genus_panels, fun_prod_map_genus)
+  map_list <- map(focal_genus_panels, fun_prod_map_genus)
    
-  plot_grid(plotlist = test, ncol = 2,
+  plot_grid(plotlist = map_list, ncol = 2,
             labels = c( bquote(paste("A) "~italic("Acer"))),
                         bquote(paste("B) "~italic("Betula"))),
                         bquote(paste("C) "~italic("Gleditsia"))),
@@ -187,12 +187,12 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
    #focal_genus <- "Quercus" #Morus Acer Gleditsia Platanus
      
  #load population density raster
-  density_raster <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif")
+  density_raster <- rast("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif")
   #plot(density_raster)    
   
  #load tree pollen produced within 400 m
    prod_400m_focal_sum <-  rast(
-                  paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+                  paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                          "production_within_400m_", focal_genus, ".tif")) %>% 
      extend(., density_raster) %>% 
      resample(., density_raster, method="bilinear") #resample to get two rasters to match up precisely
@@ -203,7 +203,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   #export exposure raster
   writeRaster(pop_prod_rast, 
-              paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+              paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                      "exposure_raster_", focal_genus, ".tif"), overwrite = TRUE)
   
   #shrink everything above the 99th percentile of values to 99% for more effective visualization
@@ -226,7 +226,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
 ### panel of potential human exposure within 400 m for all tree taxa #############################################################
   #pre load map elements
   #load in nyc boundary polygon
-  nyc_boundary <- st_read( "C:/Users/danka/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+  nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
     st_union() %>% #combine the different boroughs
     st_transform(., crs = 32618)
   #nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= 32618)
@@ -236,7 +236,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
   
   #load population density raster
-  density_raster <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif")
+  density_raster <- rast("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif")
   #plot(density_raster)    
   
   
@@ -244,9 +244,9 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
     fun_expo_map_genus <- function(focal_genus){    
       
       # load raster of pollen production within 400 m for a genus
-      prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+      prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                                          "production_within_400m_", focal_genus, ".tif")) %>% 
-        # prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+        # prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
         #                                    "production_within_400m_", "Quercus", ".tif")) %>% 
         extend(., density_raster) %>% 
         resample(., density_raster, method="bilinear")
@@ -351,7 +351,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
 ### panel of potential asthma exposure within 400 m for all tree taxa #############################################################
   #pre load map elements
   #load in nyc boundary polygon
-  nyc_boundary <- st_read( "C:/Users/danka/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+  nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
     st_union() %>% #combine the different boroughs
     st_transform(., crs = 32618)
   #nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= 32618)
@@ -361,7 +361,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
   
   #load population density raster
-  asthma_raster <- rast("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_people_with_asthma.tif")
+  asthma_raster <- rast("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_people_with_asthma.tif")
   #plot(asthma_raster)    
   
   
@@ -370,9 +370,9 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   fun_asthma_expo_map_genus <- function(focal_genus){    
     
     # load raster of pollen production within 400 m for a genus
-    prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+    prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                                        "production_within_400m_", focal_genus, ".tif")) %>% 
-      # prod_400m_focal_sum <- rast(paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+      # prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
       #                                    "production_within_400m_", "Quercus", ".tif")) %>% 
       extend(., asthma_raster) %>% 
       resample(., asthma_raster, method="bilinear")

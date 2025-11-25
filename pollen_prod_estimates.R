@@ -1,6 +1,6 @@
 #this script is for calculating pollen production from individual trees of known or predicted identity
 # the original version of this script is available here:
-# "C:\Users\danka\Box\classes\plants and public health fall 2025\class project analysis\calculating pollen production from NYC tree classification.R"
+# "C:\Users\dsk273\Box\classes\plants and public health fall 2025\class project analysis\calculating pollen production from NYC tree classification.R"
 
 library(sf)
 library(dplyr)
@@ -11,7 +11,7 @@ library(tidyterra)
 library(ggplot2)
 
 #read in prediction polygons from Dave
-trees_raw <- st_read("C:/Users/danka/Box/Katz lab/NYC/classifications/practical/v1_1/cls_poly_practical_v1_1_monthcomp_filt_w_crown_metrics.gpkg")
+trees_raw <- st_read("C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v1_1/cls_poly_practical_v1_1_monthcomp_filt_w_crown_metrics.gpkg")
 # head(trees_raw)
 # plot(trees[1,1])
 # sf::plot_sf(trees[1:2, 1:2])
@@ -30,15 +30,17 @@ trees <- trees_raw %>%
 
 tr <- trees %>% st_drop_geometry() #remove the geometry column for faster processing times in the analysis
 
-# for(j in 1:50){
+
+
   
 ### calculate pollen production for each individual tree, using a loop to propagate uncertainty in pollen production equations ################
-for(i in 1:1000){ #for the final version of the manuscript, let's bump this up to 1000
+for(j in 1:10){ #dumping out the results locally on a hard drive so I don't run out of ram
+  for(i in 1:100){ #for the final version of the manuscript, let's bump this up to 1000
   
   ### parameters for canopy area calculations from Katz et al. 2020
   # note that some parameters have been updated from the original publication to
   # allow for more robust results.
-  # the script for that is available here: "C:/Users/danka/Box/MIpostdoc/trees/pollen per tree/pollen per tree analysis and figs 251031.R"
+  # the script for that is available here: "C:/Users/dsk273/Box/MIpostdoc/trees/pollen per tree/pollen per tree analysis and figs 251031.R"
   
   Acne_param_a <- rnorm(n = 1, mean = 0.49, sd = 0.09)
   Acne_param_b <- rnorm(n = 1, mean = -3.16, sd = 3.72)
@@ -117,8 +119,12 @@ for(i in 1:1000){ #for the final version of the manuscript, let's bump this up t
 }
   
   
-  # write_csv(it_dbh_genus_np_all, paste0("C:/Users/danka/Desktop/test/indiv_tree_pol_pred_", j, ".csv"))  
-  # }
+  write_csv(it_dbh_genus_np_all, paste0("C:/Users/dsk273/Desktop/test/indiv_tree_pol_pred_", j, ".csv"))
+  }
+
+#load in the results from temporary local harddrive storage
+files_to_read <- dir("C:/Users/dsk273/Desktop/test/", full.names = TRUE)
+it_dbh_genus_np_all <- purrr::map_dfr(files_to_read, read_csv)
 
 #summarize across each iteration to calculate both the mean and the standard deviation in pollen production for each tree
 indiv_tree_pol_pred <- it_dbh_genus_np_all %>% 
@@ -128,13 +134,13 @@ indiv_tree_pol_pred <- it_dbh_genus_np_all %>%
     pol_sd = sd(per_tree_pollen_prod)
   ) #head(indiv_tree_pol_pred)
 
-#write_csv(indiv_tree_pol_pred, "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/indiv_tree_pol_pred.csv")
+#write_csv(indiv_tree_pol_pred, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/indiv_tree_pol_pred.csv")
 
 #join the pollen production results back to the version that retains geometry. 
-tr_export <- left_join(trees, indiv_tree_pol_pred)  #head(tr_export)
+tr_export <- left_join(trees, indiv_tree_pol_pred)  #head(tr_export) #rm(it_dbh_genus_np_all)
 
 #export files for later stages of the analysis
-# st_write(tr_export,  "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251115.gpkg", 
+# st_write(tr_export,  "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.gpkg",
 #          driver = "GPKG")
 
 #export a csv that has polygon centroid
@@ -164,7 +170,7 @@ tr_export_centroids_proj_full <- tr_export_centroids_proj %>%
 
 #export as a csv
 write_csv(tr_export_centroids_proj_full, 
-          "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
+          "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
 
 
 
@@ -174,7 +180,7 @@ write_csv(tr_export_centroids_proj_full,
 ### calculate pollen production on a 1 ha raster for each genus #####################################
 
 #reload data from previous step if necessary
-# tr_export_centroids_proj_full <- read_csv("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
+# tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
 # tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
 
     # Get extent of NYC
@@ -215,7 +221,7 @@ write_csv(tr_export_centroids_proj_full,
     
     #export just the pollen production raster
     writeRaster(prod_raster, 
-                paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                        "production_1ha_", focal_genus, ".tif"), overwrite = TRUE)
     
     # #a more detailed map of just pollen production
@@ -233,7 +239,7 @@ write_csv(tr_export_centroids_proj_full,
 ### calculate pollen production within 400 m for each genus #####################################
   
   #reload data from previous step if necessary
-  # tr_export_centroids_proj_full <- read_csv("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
+  # tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
   # tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
   
   # Get extent of NYC
@@ -284,7 +290,7 @@ write_csv(tr_export_centroids_proj_full,
     plot(prod_1km_focal_sum)
     
     writeRaster(prod_1km_focal_sum, 
-                paste0("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/",
+                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
                        "production_within_400m_", focal_genus, ".tif"), overwrite = TRUE)
     
     #a more detailed map
@@ -302,7 +308,7 @@ write_csv(tr_export_centroids_proj_full,
   
 ### compare tree pollen production with and without tree classification data ###########################
   #reload data from previous step if necessary
-  # tr_export_centroids_proj_full <- read_csv("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251117.csv")
+  # tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
   # tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
   
 tr_export_centroids_proj %>% 

@@ -14,6 +14,7 @@ library(tidyr)
 library(ggplot2)
 library(sf)
 library(terra)
+library(ggspatial) 
 
 #census_api_key("INSERT YOUR CENSUS KEY HERE", install = TRUE, overwrite = TRUE)
 
@@ -128,7 +129,7 @@ ggplot() + ggthemes::theme_few() +
 ### asthma prevalence based on CDC Places dataset ################################
   #download from the CDC Places website after filtering to New York at the Census Tract level
   # https://data.cdc.gov/500-Cities-Places/PLACES-Census-Tract-Data-GIS-Friendly-Format-2024-/yjkw-uj5s/about_data
-  tract_asthma_places <- read_csv("C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/PLACES__Census_Tract_Data_asthma.csv") %>% 
+  tract_asthma_places <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/PLACES__Census_Tract_Data_asthma.csv") %>% 
     mutate(TractFIPS = as.character(TractFIPS))
   
   # Get population data at tract level for NYC
@@ -192,7 +193,7 @@ ggplot() + ggthemes::theme_few() +
   )
   #plot(asthma_raster)
   
-  writeRaster(asthma_raster, "C:/Users/danka/Box/classes/plants and public health fall 2025/class project analysis/nyc_people_with_asthma.tif", overwrite = TRUE)
+  writeRaster(asthma_raster, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_people_with_asthma.tif", overwrite = TRUE)
   
   # Create a more detailed ggplot visualization
   # Convert raster to dataframe for ggplot
@@ -219,7 +220,7 @@ ggplot() + ggthemes::theme_few() +
           y = NULL)
 
   #load in nyc boundary polygon
-  nyc_boundary <- st_read( "C:/Users/danka/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+  nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
     st_union() %>% #combine the different boroughs
     st_transform(., crs = 32618)
   
@@ -245,45 +246,45 @@ ggplot() + ggthemes::theme_few() +
   
   
 
-# ### sum population within 1 km of a cell #######################################
-# 
-# # Create a circular focal window
-# focal_matrix <- focalMat(density_raster, d = 1000, type = "circle", fillNA = TRUE)
-# focal_matrix_no_weights <- focal_matrix
-# 
-# # Replace all values > 0 with 1 to create an unweighted window
-# focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1
-# 
-# density_focal_sum <- 
-#   focal(
-#     density_raster,
-#     w = focal_matrix_no_weights,
-#     fun = "sum",
-#     na.rm = TRUE)
-# 
-# names(density_focal_sum) <- "pop_within_1_km"
-# 
-# plot(density_focal_sum)
-# 
-# 
-# # visualize the data
-# focal_df <- as.data.frame(density_focal_sum, xy = TRUE) %>%
-#    filter(!is.na(pop_within_1_km))
-# 
-# ggplot() +
-#   geom_raster(data = focal_df, aes(x = x, y = y, fill = pop_within_1_km)) +
-#   scale_fill_viridis_c(
-#     name = "residents within 1 km",
-#     #trans = "log10",
-#     labels = scales::comma,
-#     option = "plasma"
-#   ) +
-#   coord_equal() +
-#   theme_minimal() +
-#   theme(axis.text = element_blank(),
-#         axis.ticks = element_blank(),
-#         panel.grid = element_blank())
-# 
-# # Save the focal sum raster
-# writeRaster(density_focal_sum, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_1km_focal_sum.tif", overwrite = TRUE)
-# 
+### sum population within 400 m of a cell #######################################
+
+  # Create a circular focal window
+  focal_matrix <- focalMat(density_raster, d = 400, type = "circle", fillNA = TRUE)
+  focal_matrix_no_weights <- focal_matrix
+
+  # Replace all values > 0 with 1 to create an unweighted window
+  focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1
+
+  density_focal_sum <-
+    focal(
+      density_raster,
+      w = focal_matrix_no_weights,
+      fun = "sum",
+      na.rm = TRUE)
+
+  names(density_focal_sum) <- "pop_within_400_m"
+
+  plot(density_focal_sum)
+
+
+  # visualize the data
+  focal_df <- as.data.frame(density_focal_sum, xy = TRUE) %>%
+     filter(!is.na(pop_within_400_m))
+
+  ggplot() +
+    geom_raster(data = focal_df, aes(x = x, y = y, fill = pop_within_400_m)) +
+    scale_fill_viridis_c(
+      name = "residents within 1 km",
+      #trans = "log10",
+      labels = scales::comma,
+      option = "plasma"
+    ) +
+    coord_equal() +
+    theme_minimal() +
+    theme(axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid = element_blank())
+
+  # Save the focal sum raster
+  writeRaster(density_focal_sum, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_400m_focal_sum.tif", overwrite = TRUE)
+
