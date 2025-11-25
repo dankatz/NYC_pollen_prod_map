@@ -298,12 +298,17 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
     map_panel_list <- map(focal_genus_panels, fun_expo_map_genus)
     
     #create a custom map for density of people 
+    #shrink everything above the 99th percentile of values to 99% for more effective visualization
+    p99 <- unlist(global(density_raster, fun = quantile, probs = 0.99, na.rm = TRUE))
+    density_raster_p99 <- density_raster
+    density_raster_p99[density_raster_p99[] > p99] <- p99
+    
     # create map
     pop_den_map_panel <- ggplot() +  
       geom_spatraster_rgb(data = nyc_topo_spatrast) +
-      geom_spatraster(data = density_raster) +
+      geom_spatraster(data = density_raster_p99) +
       scale_fill_viridis_c(na.value = "transparent", 
-                           option = "inferno",
+                           option = "plasma",
                            name = "people \n(people per ha)",
                            labels = scales::label_comma()) +
       theme(  

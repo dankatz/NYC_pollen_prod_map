@@ -163,6 +163,9 @@ ggplot() + ggthemes::theme_few() +
     )  #plot(tract_asthma)
        #tract_asthma %>% dplyr::select(people_with_asthma_ha) %>% plot()
   
+  #how many people was this value imputed for
+  sum(tract_asthma$value[is.na(tract_asthma$CASTHMA_CrudePrev) & tract_asthma$value > 0])
+  
   summary(tract_asthma)
   # Get extent of NYC
   bbox <- st_bbox(nyc_block_density)
