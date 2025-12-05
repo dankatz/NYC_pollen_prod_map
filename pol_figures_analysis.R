@@ -39,6 +39,36 @@ polpop <- tr_export_centroids_proj %>%
 
 polpop_df <- polpop %>% st_drop_geometry(.)
 
+### statistics for paper ###############################################################
+#read in prediction polygons from Dave, takes a minute to load
+trees_raw <- st_read("C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v1_1/cls_poly_practical_v1_1_monthcomp_filt_w_crown_metrics.gpkg")
+
+genera_with_equations <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus", "Populus", "Juglans", "Morus")
+
+#process the input dataset
+trees_stats <- trees_raw %>% 
+  mutate(tree_area  = TNC_SHAPE_Area * 0.092903) %>% #convert area to square meters from square feet
+  rename(Genus = Genus_Merged, #rename some columns for convenience
+         Species = Species_Ref) %>% 
+  select(Poly_ID, Genus, Species, tree_area)  %>%  #only retain the relevant columns
+  mutate(pollen_calc = case_when(Genus %in% genera_with_equations ~ "pollen_calculated",
+                                 !(Genus %in% genera_with_equations) ~ "pollen_not_calculated")) %>% 
+ st_drop_geometry() #remove the geometry column for faster processing times in the analysis
+
+#what portion of canopy area do we have 
+trees_stats %>% 
+  group_by(pollen_calc) %>% 
+  summarize(total_area = sum(tree_area),
+            n_trees = n())
+
+#total pollen production by genus
+tr_export_centroids_proj_full_csv %>% 
+  group_by(Genus) %>% 
+  summarize(total_pol = sum(pol_mean, na.rm = TRUE) * 1000000000,
+            n_trees = n()) %>% 
+  arrange(-total_pol)
+
+
 
 ### visualize results ###################################################
 

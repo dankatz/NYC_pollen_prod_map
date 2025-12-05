@@ -322,3 +322,12 @@ tr_export_centroids_proj %>%
     ylab("pollen production (quadrillions of grains)") + 
     scale_fill_discrete(name = "data source") + theme(axis.text.x = element_text(face = "italic"))
   
+  
+### maximum pollen production within a 1 ha pixel for each genus #########################################
+  focal_genus <- "Acer"
+  # focal_raster <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
+  #                    "production_within_400m_", focal_genus, ".tif"))
+  focal_raster <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
+                                  "production_1ha_", focal_genus, ".tif"))
+  max(values(focal_raster), na.rm = TRUE) * 1000000000
+  
