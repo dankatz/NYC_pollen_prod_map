@@ -34,8 +34,9 @@ density_focal_sum <- rast("C:/Users/dsk273/Box/classes/plants and public health 
 tr_export_centroids_proj
 
 polpop <- tr_export_centroids_proj %>% 
-          mutate(pop_within_1_km = terra::extract(density_focal_sum, tr_export_centroids_proj)[,2],
-                 pop_pol = pol_mean * pop_within_1_km) # calculate pollen production * population to get potential impact
+          mutate(pol_mean_orig = pol_mean,
+                 pop_within_1_km = terra::extract(density_focal_sum, tr_export_centroids_proj)[,2],
+                 pop_pol = pol_mean * pop_within_1_km * 1000000000) # calculate pollen production * population to get potential impact
 
 polpop_df <- polpop %>% st_drop_geometry(.)
 
