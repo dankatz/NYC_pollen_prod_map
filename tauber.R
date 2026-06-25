@@ -16,27 +16,122 @@ library(sf)
 library(terra)
 library(purrr)
 library(cowplot)
+library(readr)
 
 focal_genus_list <- c("Acer", "Betula", "Gleditsia", "Morus", "Platanus", "Quercus", "Ulmus", "Populus", "Juglans")
 
 
 ### load in pollen sample data ######################################
-taub_raw <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/2013_NYCPSdataentry_fordankatz_data_tab.csv")
+# # #original version sent by Kate
+# taub_raw <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/2013_NYCPSdataentry_fordankatz_data_tab.csv")
+# 
+# #use the same samples in analysis as Kate did
+# taub_f_orig <- taub_raw %>%
+#   #use the same samples in analysis as Kate did
+#   #   filter(Main_analysis == 1) %>%
+# 
+#   # take an average of the replicates when available
+#   group_by(Longitude, Latitude) %>%
+#   summarize(Influx_trees = mean(Influx_trees),
+#             Influx_plat = mean(Influx_plat),
+#             Influx_que	= mean(Influx_que),
+#             Influx_acer = mean(Influx_acer),
+#             Influx_bet = mean(Influx_bet)) %>%
+#   filter(!is.na(Influx_trees)) %>%
+#   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
 
-#use the same samples in analysis as Kate did
-taub_f <- taub_raw %>% 
-  #use the same samples in analysis as Kate did
-  #   filter(Main_analysis == 1) %>% 
+# new version including data from 2013 and 2014 sent by Guy
+taub_locations <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/Kate sampling locations.csv") %>% 
+  rename(nyccas_id = SITEID)
+
+taub2013 <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/Kate_Guy_tauber_2013_400grains_rawcounts.csv")%>% 
+  mutate(Influx_acer = ((acer_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_bet = ((bet_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_gle = ((gledit_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_mor = ((morus_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_plat = ((platanus_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_que = ((quercus_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_ulm = ((ulmus_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_pop = ((pop_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_jug = ((jug_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_trees = ((total_tree_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_grass = ((poa_count_2013 * mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013,
+         Influx_herb =  (((amb_count_2013 + art_count_2013 + otherasther_count_2013 + chenoam_count_2013 +
+                             gallium_count_2013 + plantago_count_2013 + poa_count_2013 + rumex_count_2013 +
+                             taraxacum_count_2013 + typha_m_count_2013 + typha_t_count_2013 + urtica_count_2013) * 
+                            mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013) %>% 
+    left_join(., taub_locations) %>%  
+    select(nyccas_id, Longitude, Latitude, year, contains("Influx_")) %>% 
+    filter(!nyccas_id %in% c("Law School", "Calder" )) %>%  #missing coordinates for this site
+    #take an average of the replicates when available
+    group_by(Longitude, Latitude, year) %>%
+    summarize( Influx_acer = mean(Influx_acer),
+               Influx_bet = mean(Influx_bet),
+               Influx_gle = mean(Influx_gle),
+               Influx_mor = mean(Influx_mor),
+               Influx_plat = mean(Influx_plat),
+               Influx_que = mean(Influx_que),
+               Influx_ulm = mean(Influx_ulm),
+               Influx_pop = mean(Influx_pop),
+               Influx_jug = mean(Influx_jug),
+               Influx_trees	= mean(Influx_trees),
+               n = n()) %>%
+    filter(!is.na(Influx_trees))
   
-  # take an average of the replicates when available
-  group_by(Longitude, Latitude) %>% 
-  summarize(Influx_trees = mean(Influx_trees),
-            Influx_plat = mean(Influx_plat),
-            Influx_que	= mean(Influx_que), 
-            Influx_acer = mean(Influx_acer),
-            Influx_bet = mean(Influx_bet)) %>% 
-  filter(!is.na(Influx_trees)) %>% 
-  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+  
+taub2014 <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/Kate_Guy_tauber_2014_rawcounts.csv") %>% 
+  janitor::remove_empty(which = "rows") %>% 
+  mutate(Influx_acer = ((maple_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_bet = ((birch_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_gle = ((honeylocust_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_mor = ((morus_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_plat = ((sycamore_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_que = ((oak_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_ulm = ((elm_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_pop = ((populus_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_jug = ((walnut_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_trees = ((total_tree_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_grass = ((grass_count_2014 * mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014,
+         Influx_herb =  (((aster_count_2014 + cheno_count_2014 + plantago_count_2014 + grass_count_2014 +
+                             mugwort_count_2014 + ragweed_count_2014 + vibarnum_count_2014) * 
+                            mean_lycopodium_tablet_2014)/lycopodium_count_2014)/tauber_area_2014) %>% 
+  left_join(., taub_locations) %>%  #missing coordinates for the site that is listed just as "law school" - no meta-data for this site
+  select(nyccas_id, Longitude, Latitude, year, contains("Influx_")) %>% 
+  #take an average of the replicates when available
+  group_by(Longitude, Latitude, year) %>%
+  summarize( Influx_acer = mean(Influx_acer),
+             Influx_bet = mean(Influx_bet),
+             Influx_gle = mean(Influx_gle),
+             Influx_mor = mean(Influx_mor),
+             Influx_plat = mean(Influx_plat),
+             Influx_que = mean(Influx_que),
+             Influx_ulm = mean(Influx_ulm),
+             Influx_pop = mean(Influx_pop),
+             Influx_jug = mean(Influx_jug),
+             Influx_trees	= mean(Influx_trees),
+             n = n()) %>%
+  filter(!is.na(Influx_trees)) 
+ 
+bind_rows(taub2013, taub2014) %>% 
+ggplot(aes(x = Influx_trees)) + geom_histogram() + facet_wrap(~year)
+
+taub_f <- bind_rows(taub2013, taub2014) %>% 
+  #ggplot(aes(x = Longitude, y = Latitude, color = Influx_plat)) + geom_point() + scale_color_viridis_c(trans = "log10") + facet_wrap(~year)
+  
+  #average across years
+  group_by(Longitude, Latitude) %>%
+  summarize( Influx_acer = mean(Influx_acer),
+             Influx_bet = mean(Influx_bet),
+             Influx_gle = mean(Influx_gle),
+             Influx_mor = mean(Influx_mor),
+             Influx_plat = mean(Influx_plat),
+             Influx_que = mean(Influx_que),
+             Influx_ulm = mean(Influx_ulm),
+             Influx_pop = mean(Influx_pop),
+             Influx_jug = mean(Influx_jug),
+             Influx_trees	= mean(Influx_trees),
+             n = sum(n)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) #%>%   filter(n > 1)
 
 
 
@@ -48,12 +143,12 @@ taub_f <- taub_raw %>%
   
 ### threshold function to compare airborne pollen to predicted pollen within X meters ######################
 
-fun_thresh <- function(focal_genus, param_dist){
+fun_thresh <- function(focal_genus, param_dist){ #focal_genus <- "Juglans"
   
   #load in the pollen production raster for that genus 
-    prod_rast_focal_raw <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_",
+  prod_rast_focal_raw <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_",
   focal_genus, ".tif"))
-    
+  prod_rast_focal_raw <- subst(prod_rast_focal_raw, NA, 0)
     
   #choose airborne pollen genus
   taub_f_focal <- taub_f %>% 
@@ -61,11 +156,17 @@ fun_thresh <- function(focal_genus, param_dist){
                                     focal_genus == "Acer" ~ Influx_acer,
                                     focal_genus == "Platanus" ~ Influx_plat,
                                     focal_genus == "Betula" ~ Influx_bet,
+                                    focal_genus == "Gleditsia" ~ Influx_gle,
+                                    focal_genus == "Morus" ~ Influx_mor,
+                                    focal_genus == "Ulmus" ~ Influx_ulm,
+                                    focal_genus == "Populus" ~ Influx_pop,
+                                    focal_genus == "Juglans" ~ Influx_jug,
                                     focal_genus == "trees" ~ Influx_trees)) #Influx_plat Influx_acer Influx_bet Influx_que  Influx_trees
 
+    
   # Create a circular focal window
   focal_matrix <- focalMat(prod_rast_focal_raw, d = param_dist, type = "circle", fillNA = TRUE)
-  #focal_matrix <- focalMat(prod_rast, d = 400, type = "circle", fillNA = TRUE)
+  #focal_matrix <- focalMat(prod_rast_focal_raw, d = 400, type = "circle", fillNA = TRUE)
   focal_matrix_no_weights <- focal_matrix
   focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1    # Replace all values > 0 with 1 to create an unweighted window
   
@@ -79,11 +180,12 @@ fun_thresh <- function(focal_genus, param_dist){
     cbind(., poll_prod_genus = terra::extract(prod_rast_focal, taub_f, ID = FALSE))
   
   #linear model
+  if(sum(taub_f_comp$prod_within_dist > 0, na.rm = TRUE) > 5){
   fit <- lm(Influx_focal ~ 
               prod_within_dist, data = taub_f_comp)
   lm_r2 <- summary(fit)$r.squared
   lm_r2_adj <- summary(fit)$adj.r.squared
-  aic_value <- AIC(fit)
+  aic_value <- AIC(fit)} else { lm_r2 <- NA} #protect against empty dataframes for sparse taxa
   
   ## return aic or r2
   return(lm_r2)
@@ -96,8 +198,8 @@ fun_thresh <- function(focal_genus, param_dist){
 ### apply function to compare airborne pollen to predicted pollen production at X distance ##########################################
 
 #set up dataframe to hold results  
-dist_df <- expand_grid(focal_genus =  c("Quercus", "Platanus", "Acer", "Betula"),
-                       param_dist = seq.int(100, 5000, by = 100)) 
+dist_df <- expand_grid(focal_genus =  c("Quercus", "Platanus", "Acer", "Betula", "Gleditsia", "Morus", "Ulmus", "Populus", "Juglans"), #   
+                       param_dist = seq.int(100, 500, by = 100)) 
     
 #apply the comparison threshold function to each row of the dataframe
   dist_result <-  dist_df %>% 
@@ -108,14 +210,14 @@ dist_df <- expand_grid(focal_genus =  c("Quercus", "Platanus", "Acer", "Betula")
   #   dist_df$r2[k] <- fun_thresh(focal_genus = dist_df$focal_genus[k], param_dist = dist_df$param_dist[k])  #test <- fun_thresh(500)
   # #output_r2[i] <- fun_compare(test)
   # }
-  
+  dist_result %>% group_by(focal_genus) %>% slice_max(r2)
 
-### Fig SI X: Relationship between airborne pollen and pollen measurements across threshold distances
+### Fig SI 4: Relationship between airborne pollen and pollen measurements across threshold distances
 ggplot(dist_result, aes(x = param_dist, y = r2, color = focal_genus)) + geom_point() + geom_line() + theme_bw() + 
   scale_color_discrete(name = "genus")+ xlab("threshold distance (m)") + ylab(bquote("linear model fit (R"^2~")"))+
   theme(legend.text = element_text(face = "italic"))
 
-
+write_csv(dist_result, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv")
 
 
 
@@ -123,13 +225,15 @@ ggplot(dist_result, aes(x = param_dist, y = r2, color = focal_genus)) + geom_poi
 
 air_vs_prod_fun <- function(focal_genus){
 
-  #focal_genus <- "Quercus"
+  #focal_genus <- "Juglans"
   #load in the pollen production raster for that genus 
-  prod_400m_focal <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_within_400m_",
+  prod_rast_focal_raw <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/production_1ha_",
                                      focal_genus, ".tif"))
-  # prod_400m_focal_sum <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
+  # prod_rast_focal_raw <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
   #                                   "production_within_400m_Quercus.tif"))
-  #plot(prod_400m_focal_sum)
+  #plot(prod_rast_focal_raw)
+  prod_rast_focal_raw <- subst(prod_rast_focal_raw, NA, 0)
+  
   
   #choose airborne pollen genus
   taub_f_focal <- taub_f %>% 
@@ -137,12 +241,36 @@ air_vs_prod_fun <- function(focal_genus){
                                     focal_genus == "Acer" ~ Influx_acer,
                                     focal_genus == "Platanus" ~ Influx_plat,
                                     focal_genus == "Betula" ~ Influx_bet,
+                                    focal_genus == "Gleditsia" ~ Influx_gle,
+                                    focal_genus == "Morus" ~ Influx_mor,
+                                    focal_genus == "Ulmus" ~ Influx_ulm,
+                                    focal_genus == "Populus" ~ Influx_pop,
+                                    focal_genus == "Juglans" ~ Influx_jug,
                                     focal_genus == "trees" ~ Influx_trees)) #Influx_plat Influx_acer Influx_bet Influx_que  Influx_trees
+  
+  #get pollen production within the best distance
+  #dist_result <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv")
+  focal_genus2 <- focal_genus #work around to to prevent data masking error with filter
+  focal_genus_dist <- dist_result %>% 
+    filter(focal_genus == focal_genus2) %>% 
+    slice_max(r2) %>% 
+    pull(param_dist)
+    
+  #Create a circular focal window
+  focal_matrix <- focalMat(prod_rast_focal_raw, d = focal_genus_dist, type = "circle", fillNA = TRUE)
+  #focal_matrix <- focalMat(prod_rast_focal_raw, d = 400, type = "circle", fillNA = TRUE)
+  focal_matrix_no_weights <- focal_matrix
+  focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1    # Replace all values > 0 with 1 to create an unweighted window
+  
+  #calculate pollen production within distance
+  prod_rast_focal <-  focal( prod_rast_focal_raw, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
+  names(prod_rast_focal) <- "prod_within_dist"
+  #return(prod_rast_focal)
   
   #extract data from production surface 
   taub_f_plot <- taub_f_focal %>% 
-    cbind(., poll_prod_focal = terra::extract(prod_400m_focal, taub_f, ID = FALSE)) %>% 
-    rename(poll_prod_focal = prod_within_400m)
+    cbind(., poll_prod_focal = terra::extract(prod_rast_focal, taub_f, ID = FALSE)) %>% 
+    rename(poll_prod_focal = prod_within_dist)
   
   #compare measurements to production surface
   fit <- lm(Influx_focal ~ poll_prod_focal, data = taub_f_plot)
@@ -150,9 +278,10 @@ air_vs_prod_fun <- function(focal_genus){
   # fit_pval <- summary(fit)$coefficients[, "Pr(>|t|)"][2]
   # fit_pval <- ifelse(fit_pval < 0.001, "0.001", round(p_value, 3))
   
+  xlab_text <- paste("pollen production within", focal_genus_dist, "m (trillions of grains)")
   air_prod_scatter <-
     ggplot(taub_f_plot, aes(x = poll_prod_focal/1000 , y = Influx_focal )) + geom_point() + theme_bw() + geom_smooth(method = "lm") +
-    xlab("pollen production within 400 m (trillions of grains)") + ylab(bquote(airborne~pollen~(grains/cm^2)))+
+    xlab(xlab_text) + ylab(bquote(airborne~pollen~(grains/cm^2)))+
     annotate("text", hjust = -0.5, vjust = 1.5,x = -Inf, y = Inf, label = focal_genus, fontface = "italic") + 
     annotate("text", hjust = -0.5, vjust = 2.5,x = -Inf, y = Inf, 
              label = paste0("R^2 == ", fit_r2), parse = TRUE) 
@@ -175,7 +304,7 @@ return(air_prod_scatter)
 }
 
 
-scatter_panels <- map( c("Quercus", "Acer", "Platanus","Betula"),air_vs_prod_fun)
+scatter_panels <- map( c("Quercus", "Platanus", "Ulmus", "Juglans"), air_vs_prod_fun)
 plot_grid(plotlist = scatter_panels)
 
 
