@@ -62,7 +62,7 @@ taub2013 <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/Kate_Guy_taub
                             mean_lycopodium_tablet_2013)/lycopodium_count_2013)/tauber_area_2013) %>% 
     left_join(., taub_locations) %>%  
     select(nyccas_id, Longitude, Latitude, year, contains("Influx_")) %>% 
-    filter(!nyccas_id %in% c("Law School", "Calder" )) %>%  #missing coordinates for this site
+    filter(!nyccas_id %in% c("Calder", "Law School")) %>%  #law school is at a different height so shouldn't be included 
     #take an average of the replicates when available
     group_by(Longitude, Latitude, year) %>%
     summarize( Influx_acer = mean(Influx_acer),
@@ -113,7 +113,7 @@ taub2014 <- read_csv("C:/Users/dsk273/Box/NYC projects/pollen data/Kate_Guy_taub
   filter(!is.na(Influx_trees)) 
  
 bind_rows(taub2013, taub2014) %>% 
-ggplot(aes(x = Influx_trees)) + geom_histogram() + facet_wrap(~year)
+ggplot(aes(x = Influx_gle)) + geom_histogram() + facet_wrap(~year)
 
 taub_f <- bind_rows(taub2013, taub2014) %>% 
   #ggplot(aes(x = Longitude, y = Latitude, color = Influx_plat)) + geom_point() + scale_color_viridis_c(trans = "log10") + facet_wrap(~year)
@@ -199,7 +199,7 @@ fun_thresh <- function(focal_genus, param_dist){ #focal_genus <- "Juglans"
 
 #set up dataframe to hold results  
 dist_df <- expand_grid(focal_genus =  c("Quercus", "Platanus", "Acer", "Betula", "Gleditsia", "Morus", "Ulmus", "Populus", "Juglans"), #   
-                       param_dist = seq.int(100, 500, by = 100)) 
+                       param_dist = seq.int(100, 5000, by = 100)) 
     
 #apply the comparison threshold function to each row of the dataframe
   dist_result <-  dist_df %>% 
@@ -218,6 +218,7 @@ ggplot(dist_result, aes(x = param_dist, y = r2, color = focal_genus)) + geom_poi
   theme(legend.text = element_text(face = "italic"))
 
 write_csv(dist_result, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv")
+dist_result <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv")
 
 
 
@@ -304,7 +305,7 @@ return(air_prod_scatter)
 }
 
 
-scatter_panels <- map( c("Quercus", "Platanus", "Ulmus", "Juglans"), air_vs_prod_fun)
+scatter_panels <- map( c("Quercus", "Juglans","Ulmus", "Platanus", "Populus", "Acer", "Morus", "Gleditsia", "Betula"), air_vs_prod_fun)
 plot_grid(plotlist = scatter_panels)
 
 
