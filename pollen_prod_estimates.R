@@ -10,23 +10,29 @@ library(terra)
 library(tidyterra)
 library(ggplot2)
 
-#read in prediction polygons from Dave
-trees_raw <- st_read("C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v1_1/cls_poly_practical_v1_1_monthcomp_filt_w_crown_metrics.gpkg")
+#read in prediction polygons from Dave; doing the unzipping directly in the command with /vsizip/
+#trees_raw <- st_read("/vsizip/C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v2/nyc_class_tree_genus_polygons_v2.zip/nyc_class_tree_genus_polygons_v2.gpkg")
+trees_raw <- st_read("C:/Users/dsk273/Desktop/nyc_class_tree_genus_polygons_v2/nyc_class_tree_genus_polygons_v2.gpkg")
+
+
+
 # head(trees_raw)
 # plot(trees[1,1])
 # sf::plot_sf(trees[1:2, 1:2])
 
+
 #which genera will be included in the analysis
-genera_with_equations_and_classifications <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus",
-                                               "Populus", "Juglans", "Morus")
+genera_with_equations <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus", #genera identified in classification
+                                               "Populus", "Juglans", "Morus") #genera not identified
 
 #process the input dataset
 trees <- trees_raw %>% 
   mutate(tree_area  = TNC_SHAPE_Area * 0.092903) %>% #convert area to square meters from square feet
-  rename(Genus = Genus_Merged, #rename some columns for convenience
+  rename(#Genus = Genus_Merged, #rename some columns for convenience
          Species = Species_Ref) %>% 
-  select(Poly_ID, Genus, Species, tree_area)  %>%  #only retain the relevant columns
-  filter(Genus %in% genera_with_equations_and_classifications) #only retain the relevant genera
+  select(Poly_ID, Genus_Predicted, Genus_Ref, Species, tree_area,  #only retain the relevant columns
+         Acer, Betula, Gleditsia, Platanus, Quercus, Ulmus)  %>% 
+  filter(Genus_Ref %in% genera_with_equations | is.na(Genus_Ref)) #only retain trees that are potentially relevant genera (removing trees that are known to be otherwise)
 
 tr <- trees %>% st_drop_geometry() #remove the geometry column for faster processing times in the analysis
 
@@ -34,104 +40,152 @@ tr <- trees %>% st_drop_geometry() #remove the geometry column for faster proces
 
   
 ### calculate pollen production for each individual tree, using a loop to propagate uncertainty in pollen production equations ################
-for(j in 1:10){ #dumping out the results locally on a hard drive so I don't run out of ram
-  for(i in 1:100){ #for the final version of the manuscript, let's bump this up to 1000
-  
-  ### parameters for canopy area calculations from Katz et al. 2020
-  # note that some parameters have been updated from the original publication to
-  # allow for more robust results.
-  # the script for that is available here: "C:/Users/dsk273/Box/MIpostdoc/trees/pollen per tree/pollen per tree analysis and figs 251031.R"
-  
-  Acne_param_a <- rnorm(n = 1, mean = 0.49, sd = 0.09)
-  Acne_param_b <- rnorm(n = 1, mean = -3.16, sd = 3.72)
-  Acpl_param_a <- rnorm(n = 1, mean = 0.04, sd = 0.01)
-  Acpl_param_b <- rnorm(n = 1, mean = 0.53, sd = 0.42)
-  Acru_param_a <- rnorm(n = 1, mean = 0.10, sd = 0.02)
-  Acru_param_b <- rnorm(n = 1, mean = -0.10, sd = 0.64)
-  Acsa_param_a <- rnorm(n = 1, mean = 0.05, sd =0.02)
-  Acsa_param_b <- rnorm(n = 1, mean = 2.59, sd =2.33)
-  Bepa_param_a <- rnorm(n = 1, mean = 1.27, sd = 0.55)
-  Bepa_param_b <- rnorm(n = 1, mean = -4.73, sd = 8.92)
-  Gltr_param_a <- rnorm(n = 1, mean = 0.89, sd = 0.14)
-  Gltr_param_b <- rnorm(n = 1, mean = -6.13, sd = 2.58)
-  Juni_param_a <- rnorm(n = 1, mean = 0.66, sd = 0.15)
-  Juni_param_b <- rnorm(n = 1, mean = 1.42, sd = 8.30)
-  Mosp_param_a <- rnorm(n = 1, mean = 0.035375, sd = 0.005136) 
-  Mosp_param_b <- rnorm(n = 1, mean = 24.260318, sd = 0.424734)
-  Plac_param_a <- rnorm(n = 1, mean = 1.87, sd = 0.48)
-  Plac_param_b <- rnorm(n = 1, mean = -26.43, sd = 16.48)
-  Posp_param_a <- rnorm(n = 1, mean = 1.2995, sd = 0.3054) 
-  Posp_param_b <- rnorm(n = 1, mean = -34.7360, sd = 54.8874)
-  Qusp_param_a <- rnorm(n = 1, mean = 0.97, sd = 0.16)
-  Qusp_param_b <- rnorm(n = 1, mean = 17.02, sd = 9.54)
-  Qupa_param_a <- rnorm(n = 1, mean = 0.65, sd =0.19)
-  Qupa_param_b <- rnorm(n = 1, mean = 8.30, sd = 6.88)
-  Ulsp_param_a <- rnorm(n = 1, mean = 1.263, sd = 0.420) 
-  Ulsp_param_b <- rnorm(n = 1, mean = -38.904, sd = 98.023)  #rnorm(n = 1, mean = 23.11, sd = 0.15)
-  
-  it_dbh_genus_np_i <-  
-    tr %>%  
+for(k in 1:9){ #including uncertainty from classification
+ 
+  #focal_genus_id <- "Gleditsia" #focal_genus_id <- genus_list[k]
+  focal_genus_id <- genera_with_equations[k]
     
-    #protect against unrealistic large trees having overly large numbers by setting canopy area equal to the max recorded in the underlying dataset
-    # note: this is only an issue for non-linear relationships, which have been substituted for linear relationships for everything besides Morus
-    mutate(tree_area_c = case_when(
-      Genus == "Morus" & tree_area > 162 ~ 162,
-      .default = tree_area
-    )) %>% 
+  for(j in 1:10){ #dumping out the results locally on a hard drive so I don't run out of ram
+    for(i in 1:10){ #for the final version of the manuscript, let's bump this up to 1000
     
-    #calculate per tree pollen production as a function of canopy area
-    mutate(per_tree_pollen_prod = case_when(
-      Genus == "Acer" & Species == "Acer negundo"  ~ ( Acne_param_a * tree_area_c + Acne_param_b) *0.558, #.558 is the sex ratio,
-      Genus == "Acer" & Species == "Acer platanoides" ~ Acpl_param_a * tree_area_c + Acpl_param_b,
-      Genus == "Acer" & Species == "Acer rubrum"  ~ ( Acru_param_a * tree_area_c + Acru_param_b) * 0.106, #.106 is the sex ratio
-      Genus == "Acer" & Species == "Acer saccharinum"~ Acsa_param_a * tree_area_c + Acsa_param_b, 
-      # for Acer trees with unknown species from classification, weight by average basal area of Acer species from 2013 i-Tree Eco sampling 
-      Genus == "Acer" & is.na(Species)  ~   0.6311 * (Acpl_param_a * tree_area_c + Acpl_param_b) +  #Acer platanoides
-                                            0.1713 * (( Acru_param_a * tree_area_c + Acru_param_b) * 0.106) + #Acer rubrum
-                                            0.1668 * (Acsa_param_a * tree_area_c + Acsa_param_b) + #Acer saccharinum
-                                            0.0011 * (( Acne_param_a * tree_area_c + Acne_param_b) *0.558), #Acer negundo
-      # assuming other species produce no pollen
-      # relative basal area of other Acer spp (unknown individuals, palmatum, psuedoplatanus, buergerianum, saccharum, campestre = 0.0377)
-      Genus == "Betula"  ~ Bepa_param_a* tree_area_c + Bepa_param_b,
-      Genus == "Gleditsia"  ~ Gltr_param_a * tree_area_c + Gltr_param_b,
-      Genus == "Juglans"  ~ Juni_param_a * tree_area_c + Juni_param_b,
-      Genus == "Morus"  ~ ((exp( Mosp_param_a * tree_area_c + Mosp_param_b) )/1000000000 ) * 0.578, #convert to billions and adjust for sex ratio
-      Genus == "Platanus"  ~ Plac_param_a * tree_area_c + Plac_param_b,
-      Genus == "Populus"  ~ ( Posp_param_a * tree_area_c + Posp_param_b) * 0.482, #adjust for sex ratio
-      Genus == "Quercus" & !is.na(Species)  ~ Qusp_param_a * tree_area_c + Qusp_param_b, #red oaks and other non-pin oaks
-      Genus == "Quercus" & Species == "Quercus palustris"  ~ Qupa_param_a * tree_area_c + Qupa_param_b, #pin oaks
-      #for Quercus species from classification, weight by average basal area of Quercus species from 2013 i-Tree Eco sampling 
-      Genus == "Quercus" & is.na(Species)  ~ 0.6546 * (Qusp_param_a * tree_area_c + Qusp_param_b) + #red oaks and other oaks with species
-                                             0.3454 * (Qupa_param_a * tree_area_c + Qupa_param_b), 
-      Genus == "Ulmus"  ~ ( Ulsp_param_a * tree_area_c + Ulsp_param_b)
-    )) %>% 
+    ### parameters for canopy area calculations from Katz et al. 2020
+    # note that some parameters have been updated from the original publication to
+    # allow for more robust results.
+    # the script for that is available here: "C:/Users/dsk273/Box/MIpostdoc/trees/pollen per tree/pollen per tree analysis and figs 251031.R"
     
-    #protect against small trees having negative numbers
-    mutate(per_tree_pollen_prod = case_when(per_tree_pollen_prod < 0 ~ 0,
-                                            per_tree_pollen_prod > 0 ~ per_tree_pollen_prod)) %>% 
-    mutate(iter = i ) 
-  
-  
-  ifelse(i == 1,
-         it_dbh_genus_np_all <- it_dbh_genus_np_i,
-         it_dbh_genus_np_all <- bind_rows(it_dbh_genus_np_all, it_dbh_genus_np_i))
-  print(i)
-}
-  
-  
-  write_csv(it_dbh_genus_np_all, paste0("C:/Users/dsk273/Desktop/test/indiv_tree_pol_pred_", j, ".csv"))
+    Acne_param_a <- rnorm(n = 1, mean = 0.49, sd = 0.09)
+    Acne_param_b <- rnorm(n = 1, mean = -3.16, sd = 3.72)
+    Acpl_param_a <- rnorm(n = 1, mean = 0.04, sd = 0.01)
+    Acpl_param_b <- rnorm(n = 1, mean = 0.53, sd = 0.42)
+    Acru_param_a <- rnorm(n = 1, mean = 0.10, sd = 0.02)
+    Acru_param_b <- rnorm(n = 1, mean = -0.10, sd = 0.64)
+    Acsa_param_a <- rnorm(n = 1, mean = 0.05, sd =0.02)
+    Acsa_param_b <- rnorm(n = 1, mean = 2.59, sd =2.33)
+    Bepa_param_a <- rnorm(n = 1, mean = 1.27, sd = 0.55)
+    Bepa_param_b <- rnorm(n = 1, mean = -4.73, sd = 8.92)
+    Gltr_param_a <- rnorm(n = 1, mean = 0.89, sd = 0.14)
+    Gltr_param_b <- rnorm(n = 1, mean = -6.13, sd = 2.58)
+    Juni_param_a <- rnorm(n = 1, mean = 0.66, sd = 0.15)
+    Juni_param_b <- rnorm(n = 1, mean = 1.42, sd = 8.30)
+    Mosp_param_a <- rnorm(n = 1, mean = 0.035375, sd = 0.005136) 
+    Mosp_param_b <- rnorm(n = 1, mean = 24.260318, sd = 0.424734)
+    Plac_param_a <- rnorm(n = 1, mean = 1.87, sd = 0.48)
+    Plac_param_b <- rnorm(n = 1, mean = -26.43, sd = 16.48)
+    Posp_param_a <- rnorm(n = 1, mean = 1.2995, sd = 0.3054) 
+    Posp_param_b <- rnorm(n = 1, mean = -34.7360, sd = 54.8874)
+    Qusp_param_a <- rnorm(n = 1, mean = 0.97, sd = 0.16)
+    Qusp_param_b <- rnorm(n = 1, mean = 17.02, sd = 9.54)
+    Qupa_param_a <- rnorm(n = 1, mean = 0.65, sd =0.19)
+    Qupa_param_b <- rnorm(n = 1, mean = 8.30, sd = 6.88)
+    Ulsp_param_a <- rnorm(n = 1, mean = 1.263, sd = 0.420) 
+    Ulsp_param_b <- rnorm(n = 1, mean = -38.904, sd = 98.023)  #rnorm(n = 1, mean = 23.11, sd = 0.15)
+    
+    
+
+    # df <- tibble(
+    #   id = 1:10,
+    #   probability = c(0.1, 0.9, 0.5, NA, 0.25, 0.6, 0.4, 0.95, 0.05, 0.8)
+    # )
+    # 
+    # # Simulate binary outcome
+    # df <- df %>%
+    #   mutate(outcome = rbinom(n(), size = 1, prob = probability))
+    # 
+    # print(df)
+    
+    
+    it_dbh_genus_np_i <-  
+      tr %>%  
+      #sample_n(100) %>% 
+      
+      #assign each classified tree to a genus based on probability
+      mutate(focal_genus_prob_NAs = as.numeric(.data[[focal_genus_id]]),
+             focal_genus_prob = replace_na(focal_genus_prob_NAs, 0),
+             Genus_class_outcome = rbinom(n(), size = 1, prob = focal_genus_prob),
+             Genus_it = case_when(Genus_class_outcome == 1 ~ focal_genus_id,
+                                  Genus_Ref == focal_genus_id ~ focal_genus_id,
+                                  .default = "not focal genus")) %>% 
+      
+      #filter out trees that are not assigned to the genus on this iteration
+      filter(Genus_it == focal_genus_id) %>% 
+      
+      #protect against unrealistic large trees having overly large numbers by setting canopy area equal to the max recorded in the underlying dataset
+      # note: this is only an issue for non-linear relationships, which have been substituted for linear relationships for everything besides Morus
+      mutate(tree_area_c = case_when(
+        Genus_it == "Morus" & tree_area > 162 ~ 162,
+        .default = tree_area
+      )) %>% 
+      
+      #assign species probabilistically when there are different equations available within the same genus
+      mutate(species_prob = runif(n(), 0, 1),
+        species_it = case_when(!is.na(Species) ~ Species, 
+                               Genus_it == "Acer" & species_prob < 0.6311 ~ "Acer platanoides",
+                               Genus_it == "Acer" & species_prob > 0.6311 & species_prob < 0.8024  ~ "Acer rubrum",
+                               Genus_it == "Acer" & species_prob > 0.8024 & species_prob < 0.9692  ~ "Acer saccharinum",
+                               Genus_it == "Acer" & species_prob > 0.9692  ~ "Acer saccharinum",
+                               Genus_it == "Quercus" & species_prob < 0.3454  ~ "Quercus palustris",
+                               .default = NA
+                               )) %>% 
+      
+      #calculate per tree pollen production as a function of canopy area
+      mutate(per_tree_pollen_prod = case_when(
+        Genus_it == "Acer" & Species == "Acer negundo"  ~ ( Acne_param_a * tree_area_c + Acne_param_b) *0.558, #.558 is the sex ratio,
+        Genus_it == "Acer" & Species == "Acer platanoides" ~ Acpl_param_a * tree_area_c + Acpl_param_b,
+        Genus_it == "Acer" & Species == "Acer rubrum"  ~ ( Acru_param_a * tree_area_c + Acru_param_b) * 0.106, #.106 is the sex ratio
+        Genus_it == "Acer" & Species == "Acer saccharinum"~ Acsa_param_a * tree_area_c + Acsa_param_b, 
+        # for Acer trees with unknown species from classification, weight by average basal area of Acer species from 2013 i-Tree Eco sampling 
+        Genus_it == "Acer" & is.na(Species)  ~   0.6311 * (Acpl_param_a * tree_area_c + Acpl_param_b) +  #Acer platanoides
+                                              0.1713 * (( Acru_param_a * tree_area_c + Acru_param_b) * 0.106) + #Acer rubrum
+                                              0.1668 * (Acsa_param_a * tree_area_c + Acsa_param_b) + #Acer saccharinum
+                                              0.0011 * (( Acne_param_a * tree_area_c + Acne_param_b) *0.558), #Acer negundo
+        # assuming other species produce no pollen
+        # relative basal area of other Acer spp (unknown individuals, palmatum, psuedoplatanus, buergerianum, saccharum, campestre = 0.0377)
+        Genus_it == "Betula"  ~ Bepa_param_a* tree_area_c + Bepa_param_b,
+        Genus_it == "Gleditsia"  ~ Gltr_param_a * tree_area_c + Gltr_param_b,
+        Genus_it == "Juglans"  ~ Juni_param_a * tree_area_c + Juni_param_b,
+        Genus_it == "Morus"  ~ ((exp( Mosp_param_a * tree_area_c + Mosp_param_b) )/1000000000 ) * 0.578, #convert to billions and adjust for sex ratio
+        Genus_it == "Platanus"  ~ Plac_param_a * tree_area_c + Plac_param_b,
+        Genus_it == "Populus"  ~ ( Posp_param_a * tree_area_c + Posp_param_b) * 0.482, #adjust for sex ratio
+        Genus_it == "Quercus" & !is.na(Species)  ~ Qusp_param_a * tree_area_c + Qusp_param_b, #red oaks and other non-pin oaks
+        Genus_it == "Quercus" & Species == "Quercus palustris"  ~ Qupa_param_a * tree_area_c + Qupa_param_b, #pin oaks
+        #for Quercus species from classification, weight by average basal area of Quercus species from 2013 i-Tree Eco sampling 
+        Genus_it == "Quercus" & is.na(Species)  ~ 0.6546 * (Qusp_param_a * tree_area_c + Qusp_param_b) + #red oaks and other oaks with species
+                                               0.3454 * (Qupa_param_a * tree_area_c + Qupa_param_b), 
+        Genus_it == "Ulmus"  ~ ( Ulsp_param_a * tree_area_c + Ulsp_param_b),
+        .default = 0 #otherwise assigning the tree to 0 pollen production
+      )) %>% 
+      
+      #protect against small trees having negative numbers
+      mutate(per_tree_pollen_prod = case_when(per_tree_pollen_prod < 0 ~ 0,
+                                              per_tree_pollen_prod > 0 ~ per_tree_pollen_prod)) %>% 
+      mutate(iter = i ) 
+    
+    
+    ifelse(i == 1,
+           it_dbh_genus_np_all <- it_dbh_genus_np_i,
+           it_dbh_genus_np_all <- bind_rows(it_dbh_genus_np_all, it_dbh_genus_np_i))
+    #print(i)
   }
+    
+    
+    write_csv(it_dbh_genus_np_all, paste0("C:/Users/dsk273/Desktop/prod_chunk/indiv_tree_pol_pred_",focal_genus_id,"_", j, ".csv"))
+    print(paste(focal_genus_id,": chunk", j, "out of 100. Completed:", Sys.time()))
+  }
+} #end genus loop
 
 #load in the results from temporary local harddrive storage
-files_to_read <- dir("C:/Users/dsk273/Desktop/test/", full.names = TRUE)
-it_dbh_genus_np_all <- purrr::map_dfr(files_to_read, read_csv)
+files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
+it_dbh_genus_np_all <- purrr::map_dfr(files_to_read[1:10], read_csv) #test <- read_csv(files_to_read[1]) head(test)
+
+# test <- read_csv(files_to_read[101])
 
 #summarize across each iteration to calculate both the mean and the standard deviation in pollen production for each tree
 indiv_tree_pol_pred <- it_dbh_genus_np_all %>% 
   group_by(Poly_ID) %>% 
   dplyr::summarize(
     pol_mean = mean(per_tree_pollen_prod), 
-    pol_sd = sd(per_tree_pollen_prod)
+    pol_sd = sd(per_tree_pollen_prod),
+    n = n()
   ) #head(indiv_tree_pol_pred)
 
 #write_csv(indiv_tree_pol_pred, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/indiv_tree_pol_pred.csv")
