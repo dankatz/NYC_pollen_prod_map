@@ -27,7 +27,7 @@ genera_with_equations <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus",
 
 #process the input dataset
 trees <- trees_raw %>% 
-  mutate(tree_area  = TNC_SHAPE_Area * 0.092903) %>% #convert area to square meters from square feet
+  mutate(tree_area  = round(TNC_SHAPE_Area * 0.092903, 2)) %>% #convert area to square meters from square feet
   rename(#Genus = Genus_Merged, #rename some columns for convenience
          Species = Species_Ref) %>% 
   select(Poly_ID, Genus_Predicted, Genus_Ref, Species, tree_area,  #only retain the relevant columns
@@ -40,13 +40,13 @@ tr <- trees %>% st_drop_geometry() #remove the geometry column for faster proces
 
   
 ### calculate pollen production for each individual tree, using a loop to propagate uncertainty in pollen production equations ################
-for(k in 1:9){ #including uncertainty from classification
+for(k in 1:6){ #including uncertainty from classification
  
   #focal_genus_id <- "Gleditsia" #focal_genus_id <- genus_list[k]
   focal_genus_id <- genera_with_equations[k]
     
-  for(j in 1:10){ #dumping out the results locally on a hard drive so I don't run out of ram
-    for(i in 1:10){ #for the final version of the manuscript, let's bump this up to 1000
+  for(j in 1:50){ #dumping out the results locally on a hard drive so I don't run out of ram
+    for(i in 1:10){ #
     
     ### parameters for canopy area calculations from Katz et al. 2020
     # note that some parameters have been updated from the original publication to
@@ -107,7 +107,10 @@ for(k in 1:9){ #including uncertainty from classification
                                   .default = "not focal genus")) %>% 
       
       #filter out trees that are not assigned to the genus on this iteration
-      filter(Genus_it == focal_genus_id) %>% 
+      filter(Genus_it == focal_genus_id) %>%
+      
+      #filter out trees that are known to be another genus
+      filter(Genus_Ref == focal_genus_id | is.na(Genus_Ref)) %>% 
       
       #protect against unrealistic large trees having overly large numbers by setting canopy area equal to the max recorded in the underlying dataset
       # note: this is only an issue for non-linear relationships, which have been substituted for linear relationships for everything besides Morus
@@ -119,11 +122,11 @@ for(k in 1:9){ #including uncertainty from classification
       #assign species probabilistically when there are different equations available within the same genus
       mutate(species_prob = runif(n(), 0, 1),
         species_it = case_when(!is.na(Species) ~ Species, 
-                               Genus_it == "Acer" & species_prob < 0.6311 ~ "Acer platanoides",
-                               Genus_it == "Acer" & species_prob > 0.6311 & species_prob < 0.8024  ~ "Acer rubrum",
-                               Genus_it == "Acer" & species_prob > 0.8024 & species_prob < 0.9692  ~ "Acer saccharinum",
-                               Genus_it == "Acer" & species_prob > 0.9692  ~ "Acer saccharinum",
-                               Genus_it == "Quercus" & species_prob < 0.3454  ~ "Quercus palustris",
+                               focal_genus_id == "Acer" & Genus_it == "Acer" & species_prob < 0.6311 ~ "Acer platanoides",
+                               focal_genus_id == "Acer" & Genus_it == "Acer" & species_prob > 0.6311 & species_prob < 0.8024  ~ "Acer rubrum",
+                               focal_genus_id == "Acer" & Genus_it == "Acer" & species_prob > 0.8024 & species_prob < 0.9692  ~ "Acer saccharinum",
+                               focal_genus_id == "Acer" & Genus_it == "Acer" & species_prob > 0.9692  ~ "Acer saccharinum",
+                               focal_genus_id == "Quercus" & Genus_it == "Quercus" & species_prob < 0.3454  ~ "Quercus palustris",
                                .default = NA
                                )) %>% 
       
@@ -155,10 +158,18 @@ for(k in 1:9){ #including uncertainty from classification
         .default = 0 #otherwise assigning the tree to 0 pollen production
       )) %>% 
       
+      #round pollen production
+      mutate(per_tree_pollen_prod = round(per_tree_pollen_prod, 2)) %>% 
+      
       #protect against small trees having negative numbers
       mutate(per_tree_pollen_prod = case_when(per_tree_pollen_prod < 0 ~ 0,
                                               per_tree_pollen_prod > 0 ~ per_tree_pollen_prod)) %>% 
-      mutate(iter = i ) 
+      mutate(iter = i, 
+             chunk_j = j,
+             focal_genus = focal_genus_id) %>%  
+      
+      #remove some columns to make the files smaller
+      select(Poly_ID, Genus_Ref, Species, tree_area_c, species_it, per_tree_pollen_prod, iter, chunk_j, focal_genus)
     
     
     ifelse(i == 1,
@@ -169,15 +180,17 @@ for(k in 1:9){ #including uncertainty from classification
     
     
     write_csv(it_dbh_genus_np_all, paste0("C:/Users/dsk273/Desktop/prod_chunk/indiv_tree_pol_pred_",focal_genus_id,"_", j, ".csv"))
+    #write_parquet(x = it_dbh_genus_np_all, sink = paste0("C:/Users/dsk273/Desktop/prod_chunk/indiv_tree_pol_pred_",focal_genus_id,"_", j, ".parquet"))
     print(paste(focal_genus_id,": chunk", j, "out of 100. Completed:", Sys.time()))
   }
 } #end genus loop
 
 #load in the results from temporary local harddrive storage
 files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
-it_dbh_genus_np_all <- purrr::map_dfr(files_to_read[1:10], read_csv) #test <- read_csv(files_to_read[1]) head(test)
+it_dbh_genus_np_all <- purrr::map_dfr(files_to_read[11:19], read_csv) #test <- read_csv(files_to_read[1]) head(test)
 
 # test <- read_csv(files_to_read[101])
+ggplot(it_dbh_genus_np_all, aes(x = tree_area_c, y = per_tree_pollen_prod, color = species_it)) + geom_point() + facet_wrap(~focal_genus)
 
 #summarize across each iteration to calculate both the mean and the standard deviation in pollen production for each tree
 indiv_tree_pol_pred <- it_dbh_genus_np_all %>% 
