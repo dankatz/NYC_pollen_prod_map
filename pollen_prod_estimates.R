@@ -9,6 +9,8 @@ library(basemaps)
 library(terra)
 library(tidyterra)
 library(ggplot2)
+library(data.table)
+library(fs)
 
 #read in prediction polygons from Dave; doing the unzipping directly in the command with /vsizip/
 #trees_raw <- st_read("/vsizip/C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v2/nyc_class_tree_genus_polygons_v2.zip/nyc_class_tree_genus_polygons_v2.gpkg")
@@ -39,13 +41,13 @@ tr <- trees %>% st_drop_geometry() #remove the geometry column for faster proces
 
 
   
-### calculate pollen production for each individual tree, using a loop to propagate uncertainty in pollen production equations ################
+### calculate pollen production per tree, using a loop to propagate uncertainty in pollen production equations, classification ################
 for(k in 1:6){ #including uncertainty from classification
  
   #focal_genus_id <- "Gleditsia" #focal_genus_id <- genus_list[k]
   focal_genus_id <- genera_with_equations[k]
     
-  for(j in 1:50){ #dumping out the results locally on a hard drive so I don't run out of ram
+  for(j in 1:100){ #dumping out the results locally on a hard drive so I don't run out of ram
     for(i in 1:10){ #
     
     ### parameters for canopy area calculations from Katz et al. 2020
@@ -185,11 +187,164 @@ for(k in 1:6){ #including uncertainty from classification
   }
 } #end genus loop
 
+
+### process simulated pollen production per grid cell for each genus===============================
+  
+  ### create a lookup table for tree location and grid cell
+      #get coordinates for each tree in EPSG 32618
+      tr_export_centroids <- st_centroid(trees) #simplify trees to points
+      tr_export_centroids_proj <- tr_export_centroids %>% 
+                                  select(Poly_ID) %>% 
+                                  st_transform(., crs = 32618) %>% #convert to EPSG 32618 for UTM 18N
+                                  mutate(x_EPSG_32618 = sf::st_coordinates(.)[,1],
+                                          y_EPSG_32618 = sf::st_coordinates(.)[,2]) #%>%  st_drop_geometry(.)
+    
+      # Get extent of NYC 
+      bbox <- st_bbox(tr_export_centroids_proj)
+      
+      # Create empty raster template with 100m resolution
+      raster_template <- rast(
+        xmin = bbox["xmin"] , #
+        xmax = bbox["xmax"] ,
+        ymin = bbox["ymin"] ,
+        ymax = bbox["ymax"] ,
+        resolution = 100,  # 100 meters
+        crs = st_crs(tr_export_centroids_proj)$wkt
+      )
+      
+      # Get the cell number for each id 
+      id_lookup <- tr_export_centroids_proj %>%
+        mutate(grid_cell = cellFromXY(raster_template, cbind(x_EPSG_32618, y_EPSG_32618))) %>%
+        select(Poly_ID, grid_cell)
+   
+      #check to make sure that there aren't NAs (i.e., points outside of the area)
+        sum(is.na(id_lookup$grid_cell))  
+      
+      # # Pull their original coordinates to inspect
+      # na_coords <- id_coords %>% filter(id %in% na_ids$id)
+      # na_coords
+  
+      all_cells <- id_lookup %>% distinct(grid_cell)
+      
+      
+      # ---- Step 1: function to process one file ----
+      process_file <- function(path, out_dir) {
+        dt <- fread(path, select = c("Poly_ID", "per_tree_pollen_prod"))  # only read needed columns
+       # dt <- fread(files_to_read_genus[1], select = c("Poly_ID", "per_tree_pollen_prod"))  # only read needed columns
+        
+        summary_tbl <- as_tibble(dt) %>%
+          inner_join(id_lookup, by = "Poly_ID") %>%        # inner_join drops unmatched ids; use left_join + check if you need to know about them
+          group_by(grid_cell) %>%
+          summarize(
+            sum_pol = sum(per_tree_pollen_prod, na.rm = TRUE),
+            n = n(),
+            had_obs = TRUE,   # flag real (non-filled) rows
+            .groups = "drop"
+          ) %>% 
+          complete( #add in zero values at this stage
+            grid_cell = all_cells$grid_cell,
+            fill = list(sum_pol = 0, n = 0, had_obs = FALSE)
+          )
+        
+        out_path <- path(out_dir, paste0(path_ext_remove(path_file(path)), "_summary.rds"))
+        write_rds(summary_tbl, out_path)
+        rm(dt, summary_tbl); gc()
+        out_path
+      }
+      
+      #process_file(path = files_to_read_genus[1], out_dir = "C:/Users/dsk273/Desktop/prod_chunk_pixel_tibble/")
+      
+  
+      # ---- Run over all files ----
+   
+      for(j in 1:6){   #start genus loop
+        
+        #focal_genus_id <- "Acer"
+        focal_genus_id <- genera_with_equations[i]
+        
+        files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
+        files_to_read_genus <- stringr::str_subset(files_to_read, focal_genus_id)
+      
+      
+      # csv_files <- dir_ls("raw_data/", glob = "*.csv")
+        #dir_create("intermediate_summaries/")
+        
+        # Simple sequential loop with progress
+        summary_paths <- character(length(files_to_read_genus))
+        #for (i in seq_along(csv_files)) {
+        for (i in 1:2) { #this will be up to 100 for all files
+          summary_paths[i] <- process_file(path = files_to_read_genus[i], out_dir = "C:/Users/dsk273/Desktop/prod_chunk_pixel_tibble/intermediate_summaries/")
+          message(sprintf("Done %d/%d: %s", i, length(files_to_read_genus), files_to_read_genus[i]))
+        }
+      
+        # ---- Step 2: combine and compute final stats ----
+        final_summary <- summary_paths[1:2] %>%
+          map(read_rds) %>%
+          list_rbind() %>%
+          group_by(grid_cell) %>%
+          summarize(
+            mean_sum      = mean(sum_pol, na.rm = TRUE),
+            sd_sum        = sd(sum_pol, na.rm = TRUE),
+            mean_n        = mean(n, na.rm = TRUE),
+            sd_n          = sd(n, na.rm = TRUE),
+            files_with_an_obs  = sum(had_obs),   # how many of the 1000 files had any obs in this cell
+            .groups = "drop"
+          ) %>% filter(!is.na(grid_cell))
+        
+        # ---- Step 3: save rasters of pollen mean, sd, and n for each genus 
+        r_mean <- raster_template  # 1 ha raster created earlier
+        values(r_mean) <- NA
+        r_mean[final_summary$grid_cell] <- final_summary$mean_sum #plot(r_mean)
+        
+        r_sd <- raster_template
+        values(r_sd) <- NA
+        r_sd[final_summary$grid_cell] <- final_summary$sd_sum #plot(r_sd)
+        
+        r_n <- raster_template
+        values(r_n) <- NA
+        r_n[final_summary$grid_cell] <- final_summary$mean_n #plot(r_n)
+        
+        genus_raster_name <- paste0( "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/",
+                                     focal_genus_id, "_1ha_summary_raster.tif")
+        writeRaster(c(r_mean, r_sd, r_n), genus_raster_name, names = c("mean", "sd", "mean_n"), overwrite = TRUE)
+        print(Sys.time())
+      } #end genus loop
+      
+      
+      
+    #leaving off here   
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+
+      
+      
+  # download basemaps
+      nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+      nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+      
+      
+  
+
+
+
+
+
 #load in the results from temporary local harddrive storage
 files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
-it_dbh_genus_np_all <- purrr::map_dfr(files_to_read[11:19], read_csv) #test <- read_csv(files_to_read[1]) head(test)
 
-# test <- read_csv(files_to_read[101])
+files_to_read_genus <- stringr::str_subset(files_to_read, "Quercus")
+it_dbh_genus_np_all <- purrr::map_dfr(files_to_read_genus, read_csv) #test <- read_csv(files_to_read[1]) head(test)
+
+# test <- read_csv(files_to_read_genus[1])
 ggplot(it_dbh_genus_np_all, aes(x = tree_area_c, y = per_tree_pollen_prod, color = species_it)) + geom_point() + facet_wrap(~focal_genus)
 
 #summarize across each iteration to calculate both the mean and the standard deviation in pollen production for each tree
@@ -201,6 +356,9 @@ indiv_tree_pol_pred <- it_dbh_genus_np_all %>%
     n = n()
   ) #head(indiv_tree_pol_pred)
 
+
+test <- filter(it_dbh_genus_np_all, Poly_ID == 7)
+test2 <- filter(tr, Poly_ID == 7)
 #write_csv(indiv_tree_pol_pred, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/indiv_tree_pol_pred.csv")
 
 #join the pollen production results back to the version that retains geometry. 
