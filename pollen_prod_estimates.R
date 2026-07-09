@@ -11,17 +11,14 @@ library(tidyterra)
 library(ggplot2)
 library(data.table)
 library(fs)
+#rm(list = ls())
 
 #read in prediction polygons from Dave; doing the unzipping directly in the command with /vsizip/
 #trees_raw <- st_read("/vsizip/C:/Users/dsk273/Box/Katz lab/NYC/classifications/practical/v2/nyc_class_tree_genus_polygons_v2.zip/nyc_class_tree_genus_polygons_v2.gpkg")
 trees_raw <- st_read("C:/Users/dsk273/Desktop/nyc_class_tree_genus_polygons_v2/nyc_class_tree_genus_polygons_v2.gpkg")
-
-
-
-# head(trees_raw)
-# plot(trees[1,1])
-# sf::plot_sf(trees[1:2, 1:2])
-
+    # head(trees_raw)
+    # plot(trees[1,1])
+    # sf::plot_sf(trees[1:2, 1:2])
 
 #which genera will be included in the analysis
 genera_with_equations <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus", #genera identified in classification
@@ -37,8 +34,6 @@ trees <- trees_raw %>%
   filter(Genus_Ref %in% genera_with_equations | is.na(Genus_Ref)) #only retain trees that are potentially relevant genera (removing trees that are known to be otherwise)
 
 tr <- trees %>% st_drop_geometry() #remove the geometry column for faster processing times in the analysis
-
-
 
   
 ### calculate pollen production per tree, using a loop to propagate uncertainty in pollen production equations, classification ################
@@ -259,26 +254,27 @@ for(k in 1:6){ #including uncertainty from classification
    
       for(j in 1:6){   #start genus loop
         
-        #focal_genus_id <- "Acer"
-        focal_genus_id <- genera_with_equations[i]
+        #focal_genus_id <- "Quercus"
+        focal_genus_id <- genera_with_equations[j]
         
-        files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
-        files_to_read_genus <- stringr::str_subset(files_to_read, focal_genus_id)
-      
-      
-      # csv_files <- dir_ls("raw_data/", glob = "*.csv")
-        #dir_create("intermediate_summaries/")
-        
-        # Simple sequential loop with progress
-        summary_paths <- character(length(files_to_read_genus))
-        #for (i in seq_along(csv_files)) {
-        for (i in 1:2) { #this will be up to 100 for all files
-          summary_paths[i] <- process_file(path = files_to_read_genus[i], out_dir = "C:/Users/dsk273/Desktop/prod_chunk_pixel_tibble/intermediate_summaries/")
-          message(sprintf("Done %d/%d: %s", i, length(files_to_read_genus), files_to_read_genus[i]))
-        }
+        # files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
+        # files_to_read_genus <- stringr::str_subset(files_to_read, focal_genus_id)
+        # 
+        # 
+        # # Simple sequential loop with progress
+        # summary_paths <- character(length(files_to_read_genus))
+        # for (i in seq_along(files_to_read_genus)) {
+        # #for (i in 1:2) { #this will be up to 100 for all files
+        #   summary_paths[i] <- process_file(path = files_to_read_genus[i], out_dir = "C:/Users/dsk273/Desktop/prod_chunk_pixel_tibble/intermediate_summaries/")
+        #   message(sprintf("Done %d/%d: %s", i, length(files_to_read_genus), files_to_read_genus[i]))
+        # }
       
         # ---- Step 2: combine and compute final stats ----
-        final_summary <- summary_paths[1:2] %>%
+        #summary_paths <- dir("C:/Users/dsk273/Desktop/prod_chunk_pixel_tibble/intermediate_summaries/", full.names = TRUE)
+        summary_paths <- dir("C:/Users/dsk273/Desktop/prod_chunk_pixel_tibble/intermediate_summaries/", full.names = TRUE) %>% 
+          stringr::str_subset(., focal_genus_id)
+        
+        final_summary <- summary_paths %>% #summary_paths[1:2] %>% 
           map(read_rds) %>%
           list_rbind() %>%
           group_by(grid_cell) %>%
@@ -291,241 +287,248 @@ for(k in 1:6){ #including uncertainty from classification
             .groups = "drop"
           ) %>% filter(!is.na(grid_cell))
         
+        
         # ---- Step 3: save rasters of pollen mean, sd, and n for each genus 
+        
+        #get a version of the nyc boundary and convert it to a terra SpatVector
+        nyc_boundary2 <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+          # st_sf(geometry = st_union(.)) %>% #combine the different boroughs
+          st_transform(., crs = 32618) %>% 
+          st_union(.) %>% 
+          st_sf(geometry = .) %>% 
+          vect() #plot(nyc_boundary2)
+        
+        
+        #create a raster of total pollen production per ha (mean of each iteration)
         r_mean <- raster_template  # 1 ha raster created earlier
         values(r_mean) <- NA
         r_mean[final_summary$grid_cell] <- final_summary$mean_sum #plot(r_mean)
+
+        #fill in NAs with zeros
+            #get the cell numbers of the raster that fall within the nyc boundary
+            cell_nums <- cells(r_mean, nyc_boundary2)[, "cell"]
+            
+            # among those cells, find which ones are NA
+            na_in_poly <- cell_nums[is.na(r_mean[cell_nums][,1])]
+            
+            # replace those NA cells with 0
+            r_mean[na_in_poly] <- 0
+            #plot(r_mean) #check that NA values were filled in
         
+        
+        
+        #create a raster of the sd of total pollen production (sd among iterations)
         r_sd <- raster_template
         values(r_sd) <- NA
         r_sd[final_summary$grid_cell] <- final_summary$sd_sum #plot(r_sd)
+        
+          #fill in NAs with zeros
+            #get the cell numbers of the raster that fall within the nyc boundary
+            cell_nums <- cells(r_sd, nyc_boundary2)[, "cell"]
+            
+            # among those cells, find which ones are NA
+            na_in_poly <- cell_nums[is.na(r_sd[cell_nums][,1])]
+            
+            # replace those NA cells with 0
+            r_sd[na_in_poly] <- 0
+            #plot(r_sd) #check that NA values were filled in
+        
         
         r_n <- raster_template
         values(r_n) <- NA
         r_n[final_summary$grid_cell] <- final_summary$mean_n #plot(r_n)
         
         genus_raster_name <- paste0( "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/",
-                                     focal_genus_id, "_1ha_summary_raster.tif")
+                                     focal_genus_id, "_1ha_summary_raster_v2.tif")
         writeRaster(c(r_mean, r_sd, r_n), genus_raster_name, names = c("mean", "sd", "mean_n"), overwrite = TRUE)
         print(Sys.time())
       } #end genus loop
       
       
       
-    #leaving off here   
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-
-      
-      
-  # download basemaps
-      nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
-      nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
-      
-      
-  
-
-
-
-
-
-#load in the results from temporary local harddrive storage
-files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
-
-files_to_read_genus <- stringr::str_subset(files_to_read, "Quercus")
-it_dbh_genus_np_all <- purrr::map_dfr(files_to_read_genus, read_csv) #test <- read_csv(files_to_read[1]) head(test)
-
-# test <- read_csv(files_to_read_genus[1])
-ggplot(it_dbh_genus_np_all, aes(x = tree_area_c, y = per_tree_pollen_prod, color = species_it)) + geom_point() + facet_wrap(~focal_genus)
-
-#summarize across each iteration to calculate both the mean and the standard deviation in pollen production for each tree
-indiv_tree_pol_pred <- it_dbh_genus_np_all %>% 
-  group_by(Poly_ID) %>% 
-  dplyr::summarize(
-    pol_mean = mean(per_tree_pollen_prod), 
-    pol_sd = sd(per_tree_pollen_prod),
-    n = n()
-  ) #head(indiv_tree_pol_pred)
-
-
-test <- filter(it_dbh_genus_np_all, Poly_ID == 7)
-test2 <- filter(tr, Poly_ID == 7)
-#write_csv(indiv_tree_pol_pred, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/indiv_tree_pol_pred.csv")
-
-#join the pollen production results back to the version that retains geometry. 
-tr_export <- left_join(trees, indiv_tree_pol_pred)  #head(tr_export) #rm(it_dbh_genus_np_all)
-
-#export files for later stages of the analysis
-# st_write(tr_export,  "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.gpkg",
-#          driver = "GPKG")
-
-#export a csv that has polygon centroid
-#get centroids of polygons
-tr_export_centroids <- st_centroid(tr_export) 
-
-
-#convert tr_export to 
-tr_export_centroids_proj <- st_transform(tr_export_centroids, crs = 32618) #convert to EPSG 32618 for UTM 18N
-
-#create columns for the x and y coordinates in the 32618
-tr_export_centroids_proj_full <- tr_export_centroids_proj %>% 
-  mutate(x_EPSG_32618 = sf::st_coordinates(.)[,1],
-         y_EPSG_32618 = sf::st_coordinates(.)[,2]) %>% 
-  st_drop_geometry(.)
-
-# #create columns for the x and y coordinates in the native projected CRS (EPSG 4269)
-# tr_export_centroids <- tr_export_centroids %>% 
-#   mutate(x_EPSG_4269 = sf::st_coordinates(.)[,1],
-#          y_EPSG_4269 = sf::st_coordinates(.)[,2])
-
-# #Also add unprojected lat and long
-# tr_export_centroids_4326 <- st_transform(tr_export_centroids, crs = 4326) %>% 
-#   mutate(lat = sf::st_coordinates(.)[,1],
-#          lon = sf::st_coordinates(.)[,2]) %>% 
+# OLD STUFF ###################################################    
+#   # download basemaps
+#       nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+#       nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+#       
+#       
+#   
+# 
+# 
+# 
+# 
+# 
+# #load in the results from temporary local harddrive storage
+# files_to_read <- dir("C:/Users/dsk273/Desktop/prod_chunk/", full.names = TRUE)
+# 
+# files_to_read_genus <- stringr::str_subset(files_to_read, "Quercus")
+# it_dbh_genus_np_all <- purrr::map_dfr(files_to_read_genus, read_csv) #test <- read_csv(files_to_read[1]) head(test)
+# 
+# # test <- read_csv(files_to_read_genus[1])
+# ggplot(it_dbh_genus_np_all, aes(x = tree_area_c, y = per_tree_pollen_prod, color = species_it)) + geom_point() + facet_wrap(~focal_genus)
+# 
+# #summarize across each iteration to calculate both the mean and the standard deviation in pollen production for each tree
+# indiv_tree_pol_pred <- it_dbh_genus_np_all %>% 
+#   group_by(Poly_ID) %>% 
+#   dplyr::summarize(
+#     pol_mean = mean(per_tree_pollen_prod), 
+#     pol_sd = sd(per_tree_pollen_prod),
+#     n = n()
+#   ) #head(indiv_tree_pol_pred)
+# 
+# 
+# test <- filter(it_dbh_genus_np_all, Poly_ID == 7)
+# test2 <- filter(tr, Poly_ID == 7)
+# #write_csv(indiv_tree_pol_pred, "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/indiv_tree_pol_pred.csv")
+# 
+# #join the pollen production results back to the version that retains geometry. 
+# tr_export <- left_join(trees, indiv_tree_pol_pred)  #head(tr_export) #rm(it_dbh_genus_np_all)
+# 
+# #export files for later stages of the analysis
+# # st_write(tr_export,  "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.gpkg",
+# #          driver = "GPKG")
+# 
+# #export a csv that has polygon centroid
+# #get centroids of polygons
+# tr_export_centroids <- st_centroid(tr_export) 
+# 
+# 
+# #convert tr_export to 
+# tr_export_centroids_proj <- st_transform(tr_export_centroids, crs = 32618) #convert to EPSG 32618 for UTM 18N
+# 
+# #create columns for the x and y coordinates in the 32618
+# tr_export_centroids_proj_full <- tr_export_centroids_proj %>% 
+#   mutate(x_EPSG_32618 = sf::st_coordinates(.)[,1],
+#          y_EPSG_32618 = sf::st_coordinates(.)[,2]) %>% 
 #   st_drop_geometry(.)
+# 
+# # #create columns for the x and y coordinates in the native projected CRS (EPSG 4269)
+# # tr_export_centroids <- tr_export_centroids %>% 
+# #   mutate(x_EPSG_4269 = sf::st_coordinates(.)[,1],
+# #          y_EPSG_4269 = sf::st_coordinates(.)[,2])
+# 
+# # #Also add unprojected lat and long
+# # tr_export_centroids_4326 <- st_transform(tr_export_centroids, crs = 4326) %>% 
+# #   mutate(lat = sf::st_coordinates(.)[,1],
+# #          lon = sf::st_coordinates(.)[,2]) %>% 
+# #   st_drop_geometry(.)
+# 
+# #export as a csv
+# write_csv(tr_export_centroids_proj_full, 
+#           "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
+# 
+# 
+# 
+# 
+# 
+# 
+### DEPRECIATED: calculate pollen production on a 1 ha raster for each genus #####################################
+# 
+# #reload data from previous step if necessary
+# # tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
+# # tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
+# 
+#     # Get extent of NYC
+#     bbox <- st_bbox(tr_export_centroids_proj)
+#     
+#     # download basemaps
+#       nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+#       nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+#       
+# 
+#     # Create empty raster template with 100m resolution
+#     raster_template <- rast(
+#       xmin = bbox["xmin"],
+#       xmax = bbox["xmax"],
+#       ymin = bbox["ymin"],
+#       ymax = bbox["ymax"],
+#       resolution = 100,  # 100 meters
+#       crs = st_crs(tr_export_centroids_proj)$wkt
+#     )
+#     
+#     focal_genus_list <- unique(tr_export_centroids_proj$Genus)
+#     
+#     for(i in 1:length(focal_genus_list)){
+#     focal_genus <-  focal_genus_list[i] 
+#     #focal_genus <- "Quercus" #Morus Acer Gleditsia Platanus
+#     tr_export_centroids_proj_quercus <- filter(tr_export_centroids_proj, Genus == focal_genus)
+#     
+#     # Convert sf to SpatVector for terra
+#     tr_vect <- vect(tr_export_centroids_proj_quercus)
+#     
+#     # Rasterize to pollen production per ha
+#     prod_raster <- rasterize(
+#       tr_vect, 
+#       raster_template, 
+#       field = "pol_mean",
+#       fun = "sum"  
+#     ) #plot(prod_raster)
+#     
+#     #export just the pollen production raster
+#     writeRaster(prod_raster, 
+#                 paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
+#                        "production_1ha_", focal_genus, ".tif"), overwrite = TRUE)
+#     
+#     # #a more detailed map of just pollen production
+#     ggplot() + ggthemes::theme_few() + ggtitle(focal_genus) +
+#       geom_spatraster_rgb(data = nyc_topo_spatrast) +
+#       geom_spatraster(data = prod_raster, alpha = 0.6) +
+#       scale_fill_viridis_c(na.value = "transparent",
+#                            #option = "plasma",
+#                            name = "pollen produced  \n (billions of grains)",
+#                            labels = scales::label_comma())
+# 
+#     }
 
-#export as a csv
-write_csv(tr_export_centroids_proj_full, 
-          "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
-
-
-
-
-
-
-### calculate pollen production on a 1 ha raster for each genus #####################################
-
-#reload data from previous step if necessary
-# tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
-# tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
-
-    # Get extent of NYC
-    bbox <- st_bbox(tr_export_centroids_proj)
     
-    # download basemaps
-      nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
-      nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+### calculate sum pollen production and SD within selected distance for each genus #####################################
+  
+  #load in the distance for each genus
+    dist_result <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv") %>% 
+        group_by(focal_genus) %>% 
+        slice_max(r2)
       
 
-    # Create empty raster template with 100m resolution
-    raster_template <- rast(
-      xmin = bbox["xmin"],
-      xmax = bbox["xmax"],
-      ymin = bbox["ymin"],
-      ymax = bbox["ymax"],
-      resolution = 100,  # 100 meters
-      crs = st_crs(tr_export_centroids_proj)$wkt
-    )
+  #start genus loop
+  for(i in 1:6){
+    focal_genus_id <-  genera_with_equations[i] 
+    #focal_genus_id <- "Quercus" #Morus Acer Gleditsia Platanus
     
-    focal_genus_list <- unique(tr_export_centroids_proj$Genus)
+    #load in focal genus 1 ha raster
+    genus_raster_name <- paste0( "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/",
+                                 focal_genus_id, "_1ha_summary_raster.tif")
+    prod_raster <- rast(genus_raster_name, lyrs = 1)
+    #plot(prod_raster)
     
-    for(i in 1:length(focal_genus_list)){
-    focal_genus <-  focal_genus_list[i] 
-    #focal_genus <- "Quercus" #Morus Acer Gleditsia Platanus
-    tr_export_centroids_proj_quercus <- filter(tr_export_centroids_proj, Genus == focal_genus)
-    
-    # Convert sf to SpatVector for terra
-    tr_vect <- vect(tr_export_centroids_proj_quercus)
-    
-    # Rasterize to pollen production per ha
-    prod_raster <- rasterize(
-      tr_vect, 
-      raster_template, 
-      field = "pol_mean",
-      fun = "sum"  
-    ) #plot(prod_raster)
-    
-    #export just the pollen production raster
-    writeRaster(prod_raster, 
-                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
-                       "production_1ha_", focal_genus, ".tif"), overwrite = TRUE)
-    
-    # #a more detailed map of just pollen production
-    ggplot() + ggthemes::theme_few() + ggtitle(focal_genus) +
-      geom_spatraster_rgb(data = nyc_topo_spatrast) +
-      geom_spatraster(data = prod_raster, alpha = 0.6) +
-      scale_fill_viridis_c(na.value = "transparent",
-                           #option = "plasma",
-                           name = "pollen produced  \n (billions of grains)",
-                           labels = scales::label_comma())
-
-    }
-
-    
-### calculate pollen production within 400 m for each genus #####################################
   
-  #reload data from previous step if necessary
-  # tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
-  # tr_export_centroids_proj <- st_as_sf(tr_export_centroids_proj_full, coords = c("x_EPSG_32618", "y_EPSG_32618"), crs = 32618)
-  
-  # Get extent of NYC
-  bbox <- st_bbox(tr_export_centroids_proj)
-  
-  # download basemaps
-  nyc_topo_rast <- basemap_raster(bbox, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
-  nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
-  
-  
-  # Create empty raster template with 100m resolution
-  raster_template <- rast(
-    xmin = bbox["xmin"],
-    xmax = bbox["xmax"],
-    ymin = bbox["ymin"],
-    ymax = bbox["ymax"],
-    resolution = 100,  # 100 meters
-    crs = st_crs(tr_export_centroids_proj)$wkt
-  )
-  
-  focal_genus_list <- unique(tr_export_centroids_proj$Genus)
-  
-  for(i in 1:length(focal_genus_list)){
-    focal_genus <-  focal_genus_list[i] 
-    #focal_genus <- "Quercus" #Morus Acer Gleditsia Platanus
-    tr_export_centroids_proj_quercus <- filter(tr_export_centroids_proj, Genus == focal_genus)
-    
-    # Convert sf to SpatVector for terra
-    tr_vect <- vect(tr_export_centroids_proj_quercus)
-    
-    # Rasterize to pollen production per ha
-    prod_raster <- rasterize(
-      tr_vect, 
-      raster_template, 
-      field = "pol_mean",
-      fun = "sum"  
-    ) #plot(prod_raster)
     
     # Create a circular focal window
-    focal_matrix <- focalMat(prod_raster, d = 400, type = "circle", fillNA = TRUE)
+    focal_genus_dist <- filter(dist_result, focal_genus == focal_genus_id) %>% 
+                        pull(param_dist)
+    focal_matrix <- focalMat(prod_raster, d = focal_genus_dist, type = "circle", fillNA = TRUE)
     focal_matrix_no_weights <- focal_matrix
     focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1    # Replace all values > 0 with 1 to create an unweighted window
     
-    #calculate pollen production within 400 m
-    prod_1km_focal_sum <-  focal( prod_raster, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
-    names(prod_1km_focal_sum) <- "prod_within_400m"
+    #calculate pollen production within focal_distance
+    prod_dist_focal_sum <-  focal( prod_raster, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
+    names(prod_dist_focal_sum) <- "mean_prod_within_dist"
+    focal_window_area <- (focal_genus_dist^2 * pi)/10000 #divide by 10000 to convert to ha
+    prod_dist_focal_rate_ha <- prod_dist_focal_sum/focal_window_area 
     
-    plot(prod_1km_focal_sum)
+    plot(prod_dist_focal_rate_ha)
     
-    writeRaster(prod_1km_focal_sum, 
-                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/",
-                       "production_within_400m_", focal_genus, ".tif"), overwrite = TRUE)
+    writeRaster(prod_dist_focal_rate_ha, 
+                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/",
+                       "mean_production_within_",focal_genus_dist, "m_", focal_genus_id, ".tif"), overwrite = TRUE)
     
-    #a more detailed map
-    ggplot() + ggthemes::theme_few() + ggtitle(focal_genus) + 
-      geom_spatraster_rgb(data = nyc_topo_spatrast) +
-      geom_spatraster(data = prod_1km_focal_sum/1000, alpha = 0.6) +
-      scale_fill_viridis_c(na.value = "transparent", 
-                           #option = "plasma",
-                           name = "pollen produced within 400m \n (trillions of grains)",
-                           labels = scales::label_comma())
+    # #a more detailed map
+    # ggplot() + ggthemes::theme_few() + ggtitle(focal_genus) + 
+    #   #geom_spatraster_rgb(data = nyc_topo_spatrast) +
+    #   geom_spatraster(data = prod_dist_focal_sum/1000, alpha = 0.6) +
+    #   scale_fill_viridis_c(na.value = "transparent", 
+    #                        #option = "plasma",
+    #                        name = "pollen produced within dist \n (trillions of grains)",
+    #                        labels = scales::label_comma())
     
   }
   
