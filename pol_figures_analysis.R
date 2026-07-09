@@ -217,6 +217,9 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
       # p99 <- unlist(global(sd_ha_rast, fun = quantile, probs = 0.99, na.rm = TRUE))
       # sd_ha_rast[sd_ha_rast[] > p99] <- p99
       
+      cv_ha_rast <- (sd_ha_rast/prod_ha_rast) * 100
+      ggplot() +  geom_spatraster(data = prod_ha_rast) + scale_fill_viridis_c( option = "turbo")
+      
       # create map
       focal_map_panel <-   
         ggplot() + #ggthemes::theme_few() +   
