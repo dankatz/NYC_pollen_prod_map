@@ -476,7 +476,10 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   
 ### fig 4: CDF of potential societal exposure #####################################################################################
-
+  dist_result <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv") %>% 
+    group_by(focal_genus) %>% 
+    slice_max(r2)
+  
   ## calculate people within each of the tree focal distances, create a raster for each
   
       # load in census population density
@@ -504,27 +507,91 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   
   ## for each tree, extract sum of people within focal distance and add back to tree polygon tibble
-  
-  
-  ## extract population density for each tree 
-  tr_export_centroids_proj
-  
-  polpop <- tr_export_centroids_proj %>% 
-    mutate(pol_mean_orig = pol_mean,
-           pop_within_1_km = terra::extract(density_focal_sum, tr_export_centroids_proj)[,2],
-           pop_pol = pol_mean * pop_within_1_km * 1000000000) # calculate pollen production * population to get potential impact
-  
-  polpop_df <- polpop %>% st_drop_geometry(.)
-  
-  
-  
-  ## calculate area of window for each genus and add back to tree polygon tibble
-  
-  ## for each tree, calculate mean and SD of grains/ha * people
-  
+      #load in pollen production (mean and sd) for each tree
+        tr3 <- st_read("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/tree_poly_prod_260710b.gpkg")
+
+        # loop through all genera to sum people within focal distance per 1 ha cell
+        tr3_pop_list <- vector("list", length = 6)
+        
+        for(i in 1:9){
+          focal_genus_id <- dist_result$focal_genus[i]
+          focal_genus_dist <- dist_result$param_dist[i]
+          
+          #load in population within focal distance for focal genus
+            focal_raster_name <- dir("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/", full.names = TRUE) %>% 
+              stringr::str_subset("nyc_pop_density_focal_dist_") %>% 
+              stringr::str_subset(focal_genus_id)
+            pop_raster_focal <- rast(focal_raster_name) #plot(pop_raster_focal)
+      
+            ## extract population density for each tree 
+            tr3_focal <- tr3 %>% 
+              filter(Genus_Merged == focal_genus_id) 
+            
+            tr3_vect <- vect(tr3_focal)
+            tr3_vect <- project(tr3_vect, crs(pop_raster_focal))
+            
+            pop_vals_focal <- extract(pop_raster_focal, tr3_vect)
+            tr3_pop_list[[i]] <- tr3_focal %>% #
+              mutate(pop_val = pop_vals_focal[, 2],
+                     focal_dist = focal_genus_dist,
+                     focal_area_ha = (focal_genus_dist * focal_genus_dist * pi)/10000) #convert from m2 to ha
+            
+        } #end genus loop for focal value extraction
+        
+        #dataframe that has population within focal distance
+        polpop_df <- bind_rows(tr3_pop_list) %>% 
+          mutate(pop_pol_mean = (mean_pollen/focal_area_ha) * pop_val * 1000000000,  # calculate pollen production * population to get potential impact
+                 pop_pol_sd = (sd_pollen/focal_area_ha) * pop_val * 1000000000)
+        
+        # polpop_df %>% 
+        #   filter(Genus_Merged == "Ulmus") %>% 
+        #   sample_n(100) %>% 
+        # ggplot(aes(x = Genus_Merged, y = pop_val)) + geom_boxplot() +
+          
+
   ## create an updated version of CDF including SDs for each tree
-  
-  
+        #cdf plot
+        # ggplot(polpop_df, aes(x = pop_pol_mean + 1, color = Genus_Merged )) + stat_ecdf(geom = "step", pad = FALSE) + theme_bw() + scale_x_log10() +
+        #   xlab(expression("exposure per tree (pollen grains" %*% "population)")) + ylab("cumulative distribution (proportion)") +
+        #   theme(legend.text = element_text(face = "italic"))
+        # 
+        
+        polpop_df_viz <- polpop_df %>% 
+          st_drop_geometry() %>% 
+          group_by(Genus_Merged) %>% 
+          #filter(Genus_Merged == "Quercus") %>% 
+          arrange(pop_pol_mean) %>% 
+          mutate(rank = row_number()) %>% 
+          ungroup() %>% 
+          filter(Genus_Merged %in% c("Acer", "Platanus", "Quercus", "Ulmus"))
+        
+        
+        #for each observation, sample from the distribution
+        polpop_df_viz_sim <- polpop_df_viz |>
+          slice(rep(1:n(), each = 10)) |>       # repeat each row n_draws times
+          mutate(pop_pol_sim = rnorm(n(), mean = pop_pol_mean, sd = pop_pol_sd))
+        
+        
+        #final figure 
+        polpop_df_viz_sim %>% 
+        ggplot(aes(x = rank, y = pop_pol_sim + 1000000)) + 
+          geom_hex(bins = 70, alpha = 0.8) +  #aes(alpha = after_stat(count))
+          scale_fill_gradientn(colors = c("gray80", viridis::viridis(6, option = "plasma", direction = -1)), name = "Density") +
+          #scale_fill_viridis_c(option = "inferno", guide = "none") +
+          scale_alpha_continuous(range = c(0, 1), guide = "none") +
+          geom_line(data = polpop_df_viz, aes(x = rank, y = pop_pol_mean + 1000000), color = "black") + 
+          scale_y_log10() + 
+          ylab(expression("exposure per tree (increase in pollen grains/ha"  %*% "residents)")) + xlab("number of trees") +
+          facet_wrap(~Genus_Merged) +
+          theme_bw() + #ggthemes::theme_few() + 
+          coord_cartesian(ylim = c(10^6, 10^15)) +
+          theme(strip.text = element_text(face = "italic"),  
+                legend.position = "inside",
+                legend.position.inside = c(0.95, 0.05),  # x, y as fraction of whole plot (right, bottom)
+                legend.justification = c(1, 0) )
+        
+        
+        
   
   
   
