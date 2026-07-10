@@ -294,7 +294,9 @@ for(k in 1:6){ #including uncertainty from classification
                   sink = paste0("C:/Users/dsk273/Desktop/prod_chunk/indiv_tree_pol_pred_",focal_genus_id,"_", j, ".parquet"))
     
     print(paste(focal_genus_id,": chunk", j, "out of 100. Completed:", Sys.time()))
+    
   } #end the j loop (chunks of 10 due to RAM constraints)
+  
   
   
   
@@ -374,10 +376,47 @@ for(k in 1:6){ #including uncertainty from classification
 
 
   
-
+### summarize for each polygon the mean and SD of pollen production ###################
+    tr2 <- trees_raw %>% 
+      select(Poly_ID, Genus_Merged) %>% 
+      filter(Genus_Merged %in% genera_with_equations) #only retain trees that are potentially relevant genera (removing trees that are known to be otherwise)
+    
+    #doing this with a genus loop
+    genera_with_equations <- c("Acer", "Betula", "Gleditsia", "Platanus", "Quercus", "Ulmus", #genera identified in classification
+                               "Populus", "Juglans", "Morus") #genera not identified
+    tr_prod_focal_genus_lst <- vector("list", length = 6)
+    
+    for(k in 1:6){
+      
+      parquet_files_genus <- dir_ls("C:/Users/dsk273/Desktop/prod_chunk/", glob = "*.parquet") %>% 
+        stringr::str_subset(focal_genus_id)
+      
+      ds <- open_dataset(parquet_files_genus, format = "parquet")
+      
+      per_tree_prod <- ds |>
+        select(Poly_ID, per_tree_pollen_prod) |>
+        group_by(Poly_ID) |>
+        summarise(
+          mean_pollen = mean(per_tree_pollen_prod, na.rm = TRUE),
+          sd_pollen   = sd(per_tree_pollen_prod, na.rm = TRUE),
+          .groups = "drop"
+        ) |>
+        collect()
+      
+      tr_prod_focal_genus_lst[[k]] <- 
+        tr2 %>% 
+        filter(Genus_Merged == focal_genus_id) %>% #only retain the most likely 
+        left_join(., per_tree_prod)
+    }
+    
+    #combine all of the different genera dataframes into a single long dataframe
+    trees3 <- bind_rows(tr_prod_focal_genus_lst)
+    
+    #save the long file (includes geometry)
+    st_write(trees3, 
+             "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/tree_poly_prod_260710.parquet", driver = "Parquet")
   
-  
-  
+    install.packages("sf") 
   
   
   

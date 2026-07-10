@@ -18,7 +18,7 @@ library(tidyterra)
 library(ggspatial)
 library(basemaps)
 library(purrr)
-library(cowplot) 
+#library(cowplot) 
 library(patchwork)
 library(grid)
 
@@ -144,7 +144,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
         
         
         
-### Fig 2: panel figure of 1 ha, sd, and mean pollen production within focal distance for all tree taxa #############################################################
+### Fig 2: panel figure of 1 ha production and sd for some tree taxa #############################################################
  #pre load map elements
     #load in nyc boundary polygon
       nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
@@ -156,24 +156,15 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
       nyc_topo_rast <- basemap_raster(nyc_boundary, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
       nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
       
-    #load in the distance for each genus
-      dist_result <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv") %>% 
-        group_by(focal_genus) %>% 
-        slice_max(r2)
-      
   #function to create a map panel for: sum production per ha 
     fun_sum_1ha_prod_map_genus <- function(focal_genus){    
       focal_genus_id <- focal_genus #focal_genus_id <- "Quercus"
       
       prod_ha_rast_name <- dir("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis", full.names = TRUE) %>% 
-        stringr::str_subset("1ha_summary_raster_v2.tif") %>% 
+        stringr::str_subset("_final_mean_sd.tif") %>% 
         stringr::str_subset(focal_genus_id)
       
       prod_ha_rast <- rast(prod_ha_rast_name, lyr = "mean")
-      
-      # #shrink everything above the 99th percentile of values to 99% for more effective visualization
-      # p99 <- unlist(global(prod_ha_rast, fun = quantile, probs = 0.99, na.rm = TRUE))
-      # prod_ha_rast[prod_ha_rast[] > p99] <- p99
       
       # create map
       focal_map_panel <-   
@@ -181,6 +172,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
         geom_spatraster_rgb(data = nyc_topo_spatrast) +
         geom_spatraster(data = prod_ha_rast) +
         scale_fill_viridis_c(na.value = "transparent", 
+                             trans = "sqrt", #power_trans(0.25),
                              option = "turbo",
                              name = expression(atop(atop(textstyle("mean pollen"),
                                                          textstyle("production")),
@@ -208,7 +200,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
       focal_genus_id <- focal_genus #focal_genus_id <- "Quercus"
       
       sd_ha_rast_name <- dir("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis", full.names = TRUE) %>% 
-        stringr::str_subset("1ha_summary_raster_v2.tif") %>% 
+        stringr::str_subset("_final_mean_sd.tif") %>% 
         stringr::str_subset(focal_genus_id)
       
       sd_ha_rast <- rast(sd_ha_rast_name, lyr = "sd")
@@ -217,15 +209,13 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
       # p99 <- unlist(global(sd_ha_rast, fun = quantile, probs = 0.99, na.rm = TRUE))
       # sd_ha_rast[sd_ha_rast[] > p99] <- p99
       
-      cv_ha_rast <- (sd_ha_rast/prod_ha_rast) * 100
-      ggplot() +  geom_spatraster(data = prod_ha_rast) + scale_fill_viridis_c( option = "turbo")
-      
       # create map
       focal_map_panel <-   
         ggplot() + #ggthemes::theme_few() +   
         geom_spatraster_rgb(data = nyc_topo_spatrast) +
         geom_spatraster(data = sd_ha_rast) +
         scale_fill_viridis_c(na.value = "transparent", 
+                             trans = "sqrt",
                              option = "turbo",
                              name = expression(atop(atop(textstyle("SD pollen"),
                                                          textstyle("production")),
@@ -248,49 +238,6 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
       return(focal_map_panel)
     } #end map making function
     
-  #create a function that produces a map panel of mean pollen production within focal distance
-    fun_mean_prod_focal_dist_map_genus <- function(focal_genus){    
-        focal_genus_id <- focal_genus #focal_genus_id <- "Quercus"
-      
-    
-      # load raster of mean pollen production within x m for a genus
-        focal_genus_dist <- filter(dist_result, focal_genus == focal_genus_id) %>% 
-          pull(param_dist)
-      prod_m_focal_mean <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/",
-                                       "mean_production_within_",focal_genus_dist, "m_", focal_genus_id, ".tif"))
- 
-      #shrink everything above the 99th percentile of values to 99% for more effective visualization
-      p99 <- unlist(global(prod_m_focal_mean, fun = quantile, probs = 0.99, na.rm = TRUE))
-      prod_m_focal_mean[prod_m_focal_mean[] > p99] <- p99
-      
-      # create map
-    focal_map_panel <-   
-      ggplot() + #ggthemes::theme_few() +   
-        geom_spatraster_rgb(data = nyc_topo_spatrast) +
-        geom_spatraster(data = prod_m_focal_mean) +
-        scale_fill_viridis_c(na.value = "transparent", 
-                             option = "turbo",
-                             name = expression(atop(atop(textstyle("neighborhood"),
-                                                    textstyle("pollen prod.")),
-                                               "("~10^9~"grains/ha)")),
-                             labels = scales::label_comma()) +
-              theme(  
-                legend.position = c(0.05, 0.95),  # Places the legend at the top-left corner
-                legend.justification = c(0.05, 0.95),# Aligns the legend box to its top-left corner)
-                legend.title = element_text(size = 8),
-                legend.text = element_text(size = 8),
-                axis.title=element_blank(),
-                axis.text=element_blank(),
-                axis.ticks=element_blank(), 
-                plot.margin = unit(c(0.1, 0, 0, 0), "cm"),
-                #plot.background = element_blank(),
-                plot.background = element_rect(fill = "white", color = "white"),
-                panel.background = element_rect(fill = "white"),
-                plot.title = element_text(face = "italic")) #+ ggtitle(focal_genus)
-    
-    return(focal_map_panel)
-  } #end map making function
-  
   
 
   
@@ -299,56 +246,36 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   map_list_1ha_sum <- map(focal_genus_panels, fun_sum_1ha_prod_map_genus)
   map_list_1ha_sd <- map(focal_genus_panels, fun_sd_1ha_prod_map_genus)
-  map_list_1ha_mean_dist <- map(focal_genus_panels, fun_mean_prod_focal_dist_map_genus)
-  
-  map_list <- c(map_list_1ha_sum, map_list_1ha_sd, map_list_1ha_mean_dist)
-  
-  # replacing old cowplot approach with patchwork for greater control
-  # plot_grid(plotlist = map_list, ncol = 3,
-  #           # labels = c( bquote(paste("A) "~italic("Quercus"))),
-  #           #             bquote(paste("B) "~italic("Platanus"))),
-  #           #             bquote(paste("C) "~italic("Ulmus"))),
-  #           #             bquote(paste("D) "~italic("Acer")))),
-  #                       # bquote(paste("E) "~italic("Quercus"))),
-  #                       # bquote(paste("F) "~italic("Ulmus")))), 
-  #           label_fontface = "italic",
-  #           label_x = 0.3, label_y = 1.01, byrow = FALSE)
-      
+   
+  map_list <- c(map_list_1ha_sum, map_list_1ha_sd)
 
-  p1 <- map_list_1ha_sum[[1]] 
+  p1 <- map_list_1ha_sum[[1]]
   p2 <- map_list_1ha_sd[[1]]
-  p3 <- map_list_1ha_mean_dist[[1]]
-  p4 <- map_list_1ha_sum[[2]] 
-  p5 <- map_list_1ha_sd[[2]] 
-  p6 <- map_list_1ha_mean_dist[[2]]
-  p7 <- map_list_1ha_sum[[3]]
-  p8 <- map_list_1ha_sd[[3]] 
-  p9 <- map_list_1ha_mean_dist[[3]]
-  p10 <- map_list_1ha_sum[[4]] 
-  p11 <- map_list_1ha_sd[[4]] 
-  p12 <- map_list_1ha_mean_dist[[4]]
+  p3 <- map_list_1ha_sum[[2]]
+  p4 <- map_list_1ha_sd[[2]]
+  p5 <- map_list_1ha_sum[[3]]
+  p6 <- map_list_1ha_sd[[3]]
+  p7 <- map_list_1ha_sum[[4]]
+  p8 <- map_list_1ha_sd[[4]]
   
-
+  # tighten spacing on the map panels only
+  maps <- list(p1, p2, p3, p4, p5, p6, p7, p8)
+  maps <- lapply(maps, function(p) p + theme(plot.margin = margin(1, 1, 1, 1)))
+  list2env(setNames(maps, paste0("p", 1:8)), envir = environment())
   
-  # helper to make a rotated, centered row label
+  # ggplot-based label helpers (avoid textGrob clipping issues)
   make_row_label <- function(label, size = 12) {
-    wrap_elements(grid::textGrob(
-      label,
-      rot = 90,
-      gp = gpar(fontsize = size, fontface = "italic"),
-      hjust = 0.5, vjust = 0.5   # centers text within the grob's allotted space
-    )) +
+    ggplot() +
+      annotate("text", x = 0, y = 0, label = label, fontface = "italic", size = size / .pt, angle = 90) +
+      theme_void() +
       theme(plot.margin = margin(0, 0, 0, 0))
   }
   
-  # helper to make a column label (no rotation needed)
   make_col_label <- function(label, size = 12) {
-    wrap_elements(grid::textGrob(
-      label,
-      gp = gpar(fontsize = size, fontface = "bold"),
-      hjust = 0.5, vjust = 0.5
-    )) +
-      theme(plot.margin = margin(0, 0, 0, 0))
+    ggplot() +
+      annotate("text", x = 0, y = 0, label = label, fontface = "bold", size = size / .pt) +
+      theme_void() +
+      theme(plot.margin = margin(1, 2, 1, 2))  # a bit extra top/bottom so bold text doesn't clip
   }
   
   row_label_1 <- make_row_label("Quercus")
@@ -358,31 +285,250 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   col_label_1 <- make_col_label("Mean")
   col_label_2 <- make_col_label("SD")
-  col_label_3 <- make_col_label("Mean within focal distance")
   
-  # build each row: label + 3 maps, with the label column narrow
-  row1 <- row_label_1 + p1  + p2  + p3  + plot_layout(widths = c(0.06, 1, 1, 1))
-  row2 <- row_label_2 + p4  + p5  + p6  + plot_layout(widths = c(0.06, 1, 1, 1))
-  row3 <- row_label_3 + p7  + p8  + p9  + plot_layout(widths = c(0.06, 1, 1, 1))
-  row4 <- row_label_4 + p10 + p11 + p12 + plot_layout(widths = c(0.06, 1, 1, 1))
+  # build each row: label + 2 maps, with the label column narrow
+  row_widths <- c(0.04, 1, 1)  # keep this identical everywhere it's used
   
-  # top strip of column labels — spacer aligns with row-label column
-  col_header <- wrap_elements(grid::nullGrob()) + col_label_1 + col_label_2 + col_label_3 +
-    plot_layout(widths = c(0.02, 1, 1, 1))
+  row1 <- row_label_1 + p1 + p2 + plot_layout(widths = row_widths)
+  row2 <- row_label_2 + p3 + p4 + plot_layout(widths = row_widths)
+  row3 <- row_label_3 + p5 + p6 + plot_layout(widths = row_widths)
+  row4 <- row_label_4 + p7 + p8 + plot_layout(widths = row_widths)
+  
+  # top strip of column labels — spacer width MUST match row label column width
+  col_header <- plot_spacer() + col_label_1 + col_label_2 +
+    plot_layout(widths = row_widths)
   
   # stack it all together
   final_plot <- col_header / row1 / row2 / row3 / row4 +
-    plot_layout(heights = c(0.02, 1, 1, 1, 1))
-  
-  final_plot <- final_plot &
-    theme(plot.margin = margin(2, 2, 2, 2))  # top, right, bottom, left, in pt
+    plot_layout(heights = c(0.05, 1, 1, 1, 1))  # bumped up from 0.02
   
   final_plot
   
-  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig2_260708.tif",
-         units = "in", height = 15, width = 12, dpi = 300, compression = "lzw")
+  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig2_260710.tif",
+         units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
         
-### visualizing a single map of pollen exposure (pollen within 400 m x population density) #######################################
+
+  
+  
+  
+  
+### Fig 3: panel figure of mean production within focal distance and sd for some tree taxa #############################################################
+  #pre load map elements
+  #load in nyc boundary polygon
+  nyc_boundary <- st_read( "C:/Users/dsk273/Box/Katz lab/NYC/nyc_boundary_polygon/nybb.shp") %>% 
+    st_union() %>% #combine the different boroughs
+    st_transform(., crs = 32618)
+  #nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= 32618)
+  # nyc_boundary_invert <- st_difference(nyc_boundary_box, nyc_boundary)
+  
+  nyc_topo_rast <- basemap_raster(nyc_boundary, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+  nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
+  
+  #load in the distance for each genus
+  dist_result <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/dist_r2_by_genus.csv") %>% 
+    group_by(focal_genus) %>% 
+    slice_max(r2)
+  
+  # focal_genus_dist <- filter(dist_result, focal_genus == focal_genus_id) %>% 
+  #   pull(param_dist)
+  
+  ## function to create a map panel for: sum production per ha 
+  fun_neighborhood_pollen_map_genus <- function(focal_genus){    
+      focal_genus_id <- focal_genus #focal_genus_id <- "Quercus"
+      
+      prod_dist_rast <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/", 
+                                       focal_genus_id,"_final_dist_mean_sd.tif"), lyr = "prod_dist_mean")
+      
+      # create map
+      focal_map_panel <-   
+        ggplot() + #ggthemes::theme_few() +   
+        geom_spatraster_rgb(data = nyc_topo_spatrast) +
+        geom_spatraster(data = prod_dist_rast) +
+        scale_fill_viridis_c(na.value = "transparent", 
+                             trans = "sqrt", #power_trans(0.25),
+                             option = "turbo",
+                             name = expression(atop(atop(textstyle("mean pollen"),
+                                                         textstyle("production")),
+                                                    "("~10^9~"grains/ha)")),
+                             labels = scales::label_comma()) +
+        theme(  
+          legend.position = c(0.05, 0.95),  # Places the legend at the top-left corner
+          legend.justification = c(0.05, 0.95),# Aligns the legend box to its top-left corner)
+          legend.title = element_text(size = 8),
+          legend.text = element_text(size = 8),
+          axis.title=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(), 
+          plot.margin = unit(c(0.1, 0, 0, 0), "cm"),
+          #plot.background = element_blank(),
+          plot.background = element_rect(fill = "white", color = "white"),
+          panel.background = element_rect(fill = "white"),
+          plot.title = element_text(face = "italic")) #+ ggtitle(focal_genus)
+      
+    return(focal_map_panel)
+  } #end map making function
+  
+  #function to create a map panel for: sd production per ha 
+  fun_neighborhood_pollen_sd_map_genus <- function(focal_genus){    
+    focal_genus_id <- focal_genus #focal_genus_id <- "Quercus"
+    
+    prod_dist_rast_sd <- rast(paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/", 
+                                  focal_genus_id,"_final_dist_mean_sd.tif"), lyr = "prod_dist_sd")
+    
+    # create map
+    focal_map_panel <-   
+      ggplot() + #ggthemes::theme_few() +   
+      geom_spatraster_rgb(data = nyc_topo_spatrast) +
+      geom_spatraster(data = prod_dist_rast_sd) +
+      scale_fill_viridis_c(na.value = "transparent", 
+                           trans = "sqrt",
+                           option = "turbo",
+                           name = expression(atop(atop(textstyle("SD pollen"),
+                                                       textstyle("production")),
+                                                  "("~10^9~"grains/ha)")),
+                           labels = scales::label_comma()) +
+      theme(  
+        legend.position = c(0.05, 0.95),  # Places the legend at the top-left corner
+        legend.justification = c(0.05, 0.95),# Aligns the legend box to its top-left corner)
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8),
+        axis.title=element_blank(),
+        axis.text=element_blank(),
+        axis.ticks=element_blank(), 
+        plot.margin = unit(c(0.1, 0, 0, 0), "cm"),
+        #plot.background = element_blank(),
+        plot.background = element_rect(fill = "white", color = "white"),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(face = "italic")) #+ ggtitle(focal_genus)
+    
+    return(focal_map_panel)
+  } #end map making function
+  
+  
+  #create list of maps
+  focal_genus_panels <- c("Quercus", "Platanus", "Ulmus", "Acer")
+  
+  map_list_dist_mean <- map(focal_genus_panels, fun_neighborhood_pollen_map_genus)
+  map_list_dist_sd <- map(focal_genus_panels, fun_neighborhood_pollen_sd_map_genus)
+  
+  map_list <- c(map_list_dist_mean, map_list_dist_sd)
+  
+  p1 <- map_list_dist_mean[[1]]
+  p2 <- map_list_dist_sd[[1]]
+  p3 <- map_list_dist_mean[[2]]
+  p4 <- map_list_dist_sd[[2]]
+  p5 <- map_list_dist_mean[[3]]
+  p6 <- map_list_dist_sd[[3]]
+  p7 <- map_list_dist_mean[[4]]
+  p8 <- map_list_dist_sd[[4]]
+  
+  # tighten spacing on the map panels only
+  maps <- list(p1, p2, p3, p4, p5, p6, p7, p8)
+  maps <- lapply(maps, function(p) p + theme(plot.margin = margin(1, 1, 1, 1)))
+  list2env(setNames(maps, paste0("p", 1:8)), envir = environment())
+  
+  # ggplot-based label helpers (avoid textGrob clipping issues)
+  make_row_label <- function(label, size = 12) {
+    ggplot() +
+      annotate("text", x = 0, y = 0, label = label, fontface = "italic", size = size / .pt, angle = 90) +
+      theme_void() +
+      theme(plot.margin = margin(0, 0, 0, 0))
+  }
+  
+  make_col_label <- function(label, size = 12) {
+    ggplot() +
+      annotate("text", x = 0, y = 0, label = label, fontface = "bold", size = size / .pt) +
+      theme_void() +
+      theme(plot.margin = margin(1, 2, 1, 2))  # a bit extra top/bottom so bold text doesn't clip
+  }
+  
+  row_label_1 <- make_row_label("Quercus")
+  row_label_2 <- make_row_label("Platanus")
+  row_label_3 <- make_row_label("Ulmus")
+  row_label_4 <- make_row_label("Acer")
+  
+  col_label_1 <- make_col_label("Mean production within distance")
+  col_label_2 <- make_col_label("SD production within distance")
+  
+  # build each row: label + 2 maps, with the label column narrow
+  row_widths <- c(0.04, 1, 1)  # keep this identical everywhere it's used
+  
+  row1 <- row_label_1 + p1 + p2 + plot_layout(widths = row_widths)
+  row2 <- row_label_2 + p3 + p4 + plot_layout(widths = row_widths)
+  row3 <- row_label_3 + p5 + p6 + plot_layout(widths = row_widths)
+  row4 <- row_label_4 + p7 + p8 + plot_layout(widths = row_widths)
+  
+  # top strip of column labels — spacer width MUST match row label column width
+  col_header <- plot_spacer() + col_label_1 + col_label_2 +
+    plot_layout(widths = row_widths)
+  
+  # stack it all together
+  final_plot <- col_header / row1 / row2 / row3 / row4 +
+    plot_layout(heights = c(0.05, 1, 1, 1, 1))  # bumped up from 0.02
+  
+  final_plot
+  
+  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig3_260710.tif",
+         units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
+  
+  
+  
+  
+  
+### fig 4: CDF of potential societal exposure #####################################################################################
+
+  ## calculate people within each of the tree focal distances, create a raster for each
+  
+      # load in census population density
+            # these were created in the 'census_map.R' script
+            density_raster <- rast("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/nyc_pop_density_nyc.tif")
+      
+      # loop through all genera to sum people within focal distance per 1 ha cell
+        for(i in 1:9){
+          focal_genus_id <- dist_result$focal_genus[i]
+          focal_genus_dist <- dist_result$param_dist[i]
+          
+          # Create a circular focal window
+          focal_matrix <- focalMat(density_raster, d = focal_genus_dist, type = "circle", fillNA = TRUE)
+          focal_matrix_no_weights <- focal_matrix
+          focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1    # Replace all values > 0 with 1 to create an unweighted window
+          
+          #calculate population within focal_distance
+          density_dist_focal_sum <-  focal( density_raster, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
+          names(density_dist_focal_sum) <- "people_within_dist"
+      
+          writeRaster(density_dist_focal_sum, 
+                      paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/nyc_pop_density_focal_dist_",
+                             focal_genus_id, ".tif"), overwrite = TRUE)
+        }
+  
+  
+  ## for each tree, extract sum of people within focal distance and add back to tree polygon tibble
+  
+  
+  ## extract population density for each tree 
+  tr_export_centroids_proj
+  
+  polpop <- tr_export_centroids_proj %>% 
+    mutate(pol_mean_orig = pol_mean,
+           pop_within_1_km = terra::extract(density_focal_sum, tr_export_centroids_proj)[,2],
+           pop_pol = pol_mean * pop_within_1_km * 1000000000) # calculate pollen production * population to get potential impact
+  
+  polpop_df <- polpop %>% st_drop_geometry(.)
+  
+  
+  
+  ## calculate area of window for each genus and add back to tree polygon tibble
+  
+  ## for each tree, calculate mean and SD of grains/ha * people
+  
+  ## create an updated version of CDF including SDs for each tree
+  
+  
+  
+  
+  
+  ### visualizing a single map of pollen exposure (pollen within 400 m x population density) #######################################
  #loop through species
  focal_genus_list <- c("Acer", "Betula", "Gleditsia", "Morus", "Platanus", "Quercus", "Ulmus", "Populus", "Juglans")
  for(i in 1:length(focal_genus_list)){
