@@ -455,3 +455,288 @@ tr_export_centroids_proj %>%
                                   "production_1ha_", focal_genus, ".tif"))
   max(values(focal_raster), na.rm = TRUE) * 1000000000
   
+  
+  
+  
+  
+  
+  
+### Creating a parallel work-flow for the taxa not included in the classifier ##########################################
+  
+  ### calculate pollen production per tree, using a loop to propagate uncertainty in pollen production equations, classification ################
+  genera_with_equations_not_in_classifier <- c("Populus", "Juglans", "Morus")
+  
+  for(k in 1:3){
+    
+    #focal_genus_id <- "Populus" #focal_genus_id <- genus_list[k]
+    focal_genus_id <- genera_with_equations_not_in_classifier[k]
+    
+    for(j in 1:100){ #100 #dumping out the results locally on a hard drive so I don't run out of ram
+      
+      #create a list for the production raster lists for each chunk
+      r_sum_raster_list_chunk_j <- vector("list", length = 10)
+      prod_dist_raster_list_chunk_j <- vector("list", length = 10)
+      
+      
+      for(i in 1:10){ #10
+        
+        ### parameters for canopy area calculations from Katz et al. 2020
+        # note that some parameters have been updated from the original publication to
+        # allow for more robust results.
+        # the script for that is available here: "C:/Users/dsk273/Box/MIpostdoc/trees/pollen per tree/pollen per tree analysis and figs 251031.R"
+        
+        #draw from coefficient distributions for each iteration
+        Juni_param_a <- rnorm(n = 1, mean = 0.66, sd = 0.15)
+        Juni_param_b <- rnorm(n = 1, mean = 1.42, sd = 8.30)
+        Mosp_param_a <- rnorm(n = 1, mean = 0.035375, sd = 0.005136) 
+        Mosp_param_b <- rnorm(n = 1, mean = 24.260318, sd = 0.424734)
+        Posp_param_a <- rnorm(n = 1, mean = 1.2995, sd = 0.3054) 
+        Posp_param_b <- rnorm(n = 1, mean = -34.7360, sd = 54.8874)
+       
+        
+        #calculate pollen production per tree for the members of the focal genus =================================
+        it_dbh_genus_np_i <-  
+          tr %>%  
+          #sample_n(100) %>% 
+          
+          
+          #filter to trees that are of the focal genus
+          filter(Genus_Ref == focal_genus_id ) %>% 
+          
+          #protect against unrealistic large trees having overly large numbers by setting canopy area equal to the max recorded in the underlying dataset
+          # note: this is only an issue for non-linear relationships, which have been substituted for linear relationships for everything besides Morus
+          mutate(tree_area_c = case_when(
+            Genus_Ref == "Morus" & tree_area > 162 ~ 162,
+            .default = tree_area
+          )) %>% 
+          
+          #calculate per tree pollen production as a function of canopy area
+          mutate(per_tree_pollen_prod = case_when(
+            Genus_Ref == "Juglans"  ~ Juni_param_a * tree_area_c + Juni_param_b,
+            Genus_Ref == "Morus"  ~ ((exp( Mosp_param_a * tree_area_c + Mosp_param_b) )/1000000000 ) * 0.578, #convert to billions and adjust for sex ratio
+            Genus_Ref == "Populus"  ~ ( Posp_param_a * tree_area_c + Posp_param_b) * 0.482, #adjust for sex ratio
+          
+            .default = 0 #otherwise assigning the tree to 0 pollen production
+          )) %>% 
+          
+          #round pollen production
+          mutate(per_tree_pollen_prod = round(per_tree_pollen_prod, 2)) %>% 
+          
+          #protect against small trees having negative numbers
+          mutate(per_tree_pollen_prod = case_when(per_tree_pollen_prod < 0 ~ 0,
+                                                  per_tree_pollen_prod > 0 ~ per_tree_pollen_prod)) %>% 
+          mutate(iter = i, 
+                 chunk_j = j,
+                 focal_genus = focal_genus_id) %>%  
+          
+          #remove some columns to make the files smaller
+          select(Poly_ID, Genus_Ref, Species, tree_area_c, per_tree_pollen_prod, iter, chunk_j, focal_genus)
+        
+        
+        ifelse(i == 1,
+               it_dbh_genus_np_all <- it_dbh_genus_np_i,
+               it_dbh_genus_np_all <- bind_rows(it_dbh_genus_np_all, it_dbh_genus_np_i))
+        #print(i)
+        
+        ### calculate pollen production per 1 ha grid cell for each iteration ========================================
+        #calculate per grid cell as a dataframe
+        cell_sum_prod_i <- it_dbh_genus_np_i %>%
+          inner_join(id_lookup, by = "Poly_ID") %>%       
+          group_by(grid_cell) %>%
+          summarize(
+            sum_pol = sum(per_tree_pollen_prod, na.rm = TRUE),
+            n = n(),
+            had_obs = TRUE,   # flag real (non-filled) rows
+            .groups = "drop"
+          ) %>% 
+          complete( #add in zero values at this stage
+            grid_cell = all_cells$grid_cell,
+            fill = list(sum_pol = 0, n = 0, had_obs = FALSE)
+          ) %>% 
+          filter(!is.na(grid_cell))
+        
+        #convert to a raster of total pollen production per ha (mean of each iteration)
+        r_sum <- raster_template  # 1 ha raster created earlier
+        values(r_sum) <- NA
+        r_sum[cell_sum_prod_i$grid_cell] <- cell_sum_prod_i$sum_pol #plot(r_mean)
+        
+        #fill in NAs with zeros
+        #get the cell numbers of the raster that fall within the nyc boundary
+        cell_nums <- cells(r_sum, nyc_boundary2)[, "cell"]
+        
+        # among those cells, find which ones are NA
+        na_in_poly <- cell_nums[is.na(r_sum[cell_nums][,1])]
+        
+        # replace those NA cells with 0
+        r_sum[na_in_poly] <- 0
+        #plot(r_sum) #check that NA values were filled in
+        
+        #save the resulting raster into a list
+        r_sum_raster_list_chunk_j[[i]] <- wrap(r_sum) #use wrap to make it survive saving
+        
+        
+        ### calculate average pollen production/ha within focal distance for each 1 ha cell ===================================
+        # Create a circular focal window
+        focal_genus_dist <- filter(dist_result, focal_genus == focal_genus_id) %>% 
+          pull(param_dist)
+        focal_matrix <- focalMat(r_sum, d = focal_genus_dist, type = "circle", fillNA = TRUE)
+        focal_matrix_no_weights <- focal_matrix
+        focal_matrix_no_weights[focal_matrix_no_weights > 0] <- 1    # Replace all values > 0 with 1 to create an unweighted window
+        
+        #calculate pollen production within focal_distance
+        prod_dist_focal_r_sum <-  focal( r_sum, w = focal_matrix_no_weights, fun = "sum", na.rm = TRUE)
+        names(prod_dist_focal_r_sum) <- "mean_prod_ha_within_dist"
+        focal_window_area <- (focal_genus_dist^2 * pi)/10000 #divide by 10000 to convert to ha
+        prod_dist_focal_rate_ha <- prod_dist_focal_r_sum/focal_window_area  #plot(prod_dist_focal_rate_ha)
+        
+        #save the resulting raster into a list
+        prod_dist_raster_list_chunk_j[[i]] <- wrap(prod_dist_focal_rate_ha) #use wrap to make it survive saving
+        
+      } #end the i loop 
+      
+      
+      #save the sum(prod per ha)/cell raster list
+      saveRDS(r_sum_raster_list_chunk_j, paste0("C:/Users/dsk273/Desktop/prod_per_ha_raster_list/", "prod_raster_list_",focal_genus_id,"_", j, ".rds"))
+      
+      #save the mean nearby production raster list
+      saveRDS(prod_dist_raster_list_chunk_j, 
+              paste0("C:/Users/dsk273/Desktop/prod_within_dist_raster_list/", "prod_dist_raster_list_",focal_genus_id,"_", j, ".rds"))
+      
+      #save the intermediate results of per-tree production per iteration
+      #write_csv(it_dbh_genus_np_all, paste0("C:/Users/dsk273/Desktop/prod_chunk/indiv_tree_pol_pred_",focal_genus_id,"_", j, ".csv"))
+      write_parquet(x = it_dbh_genus_np_all, 
+                    sink = paste0("C:/Users/dsk273/Desktop/prod_chunk/indiv_tree_pol_pred_",focal_genus_id,"_", j, ".parquet"))
+      
+      print(paste(focal_genus_id,": chunk", j, "out of 100. Completed:", Sys.time()))
+      
+    } #end the j loop (chunks of 10 due to RAM constraints)
+    
+    
+    
+    
+    ### rasters for each genus of prod/ha, sd(prod/ha) ###########################
+    rds_files <- dir_ls("C:/Users/dsk273/Desktop/prod_per_ha_raster_list/", glob = "*.rds") %>% 
+      stringr::str_subset(focal_genus_id)
+    #length(rds_files)  # should be 100
+    
+    # ---- Read all files, unwrap, and collect into one flat list of 1000 SpatRasters ----
+    all_rasters <- vector("list", length = length(rds_files) * 10)
+    idx <- 1
+    
+    for (f in rds_files) {
+      wrapped_list <- readRDS(f)          # list of 10 PackedSpatRasters
+      unwrapped <- lapply(wrapped_list, rast)  # unwrap each back to SpatRaster
+      
+      for (r in unwrapped) {
+        all_rasters[[idx]] <- r
+        idx <- idx + 1
+      }
+    }
+    
+    #length(all_rasters)  # should be 1000
+    
+    # ---- Combine into a single multi-layer SpatRaster ----
+    r_stack <- rast(all_rasters)
+    #nlyr(r_stack)  # should be 1000
+    
+    # ---- Compute mean and sd per cell across all 1000 layers ----
+    r_stats <- app(r_stack, fun = function(x) c(mean = mean(x, na.rm = TRUE),
+                                                sd   = sd(x, na.rm = TRUE)))
+    names(r_stats) <- c("mean", "sd") #plot(r_stats)
+    
+    # save result
+    writeRaster(r_stats, 
+                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/", 
+                       focal_genus_id,"_final_mean_sd.tif"), overwrite = TRUE)
+    
+    
+    
+    ### mean prod/ha within dist, sd prod/ha within dist ###########################
+    rds_files_dist <- dir_ls("C:/Users/dsk273/Desktop/prod_within_dist_raster_list/", glob = "*.rds") %>% 
+      stringr::str_subset(focal_genus_id)
+    #length(rds_files)  # should be 100
+    
+    # ---- Read all files, unwrap, and collect into one flat list of 1000 SpatRasters ----
+    all_rasters_dist <- vector("list", length = length(rds_files_dist) * 10)
+    idx <- 1
+    
+    for (f in rds_files_dist) {
+      wrapped_list <- readRDS(f)          # list of 10 PackedSpatRasters
+      unwrapped <- lapply(wrapped_list, rast)  # unwrap each back to SpatRaster
+      
+      for (r in unwrapped) {
+        all_rasters[[idx]] <- r
+        idx <- idx + 1
+      }
+    }
+    
+    #length(all_rasters)  # should be 1000
+    
+    # ---- Combine into a single multi-layer SpatRaster ----
+    r_stack_dist <- rast(all_rasters)
+    #nlyr(r_stack)  # should be 1000
+    
+    # ---- Compute mean and sd per cell across all 1000 layers ----
+    r_stats_dist <- app(r_stack_dist, fun = function(x) c(mean = mean(x, na.rm = TRUE),
+                                                          sd   = sd(x, na.rm = TRUE)))
+    names(r_stats_dist) <- c("prod_dist_mean", "prod_dist_sd") #plot(r_stats_dist)
+    
+    # save result
+    writeRaster(r_stats_dist, 
+                paste0("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/", 
+                       focal_genus_id,"_final_dist_mean_sd.tif"), overwrite = TRUE)
+    
+  } #end genus loop
+  
+  
+  
+  ### summarize for each polygon the mean and SD of pollen production ###################
+  genera_with_equations_not_in_classifier
+  
+  tr2 <- trees_raw %>% 
+    select(Poly_ID, Genus_Merged) %>% 
+    filter(Genus_Merged %in% genera_with_equations_not_in_classifier) #only retain trees that are potentially relevant genera (removing trees that are known to be otherwise)
+  
+  #doing this with a genus loop
+  tr_prod_focal_genus_lst <- vector("list", length = 6)
+  
+  for(k in 1:3){
+    focal_genus_id  <- genera_with_equations_not_in_classifier[k]
+    
+    parquet_files_genus <- dir_ls("C:/Users/dsk273/Desktop/prod_chunk/", glob = "*.parquet") %>% 
+      stringr::str_subset(focal_genus_id)
+    
+    ds <- open_dataset(parquet_files_genus, format = "parquet")
+    
+    per_tree_prod <- ds |>
+      select(Poly_ID, per_tree_pollen_prod) |>
+      group_by(Poly_ID) |>
+      summarise(
+        mean_pollen = mean(per_tree_pollen_prod, na.rm = TRUE),
+        sd_pollen   = sd(per_tree_pollen_prod, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      collect()
+    
+    tr_prod_focal_genus_lst[[k]] <- 
+      tr2 %>% 
+      filter(Genus_Merged == focal_genus_id) %>% #only retain the most likely 
+      left_join(., per_tree_prod)
+  }
+  
+  #combine all of the different genera dataframes into a single long dataframe
+  trees3 <- bind_rows(tr_prod_focal_genus_lst)
+  
+  #
+  trees3_centroids <- st_centroid(trees3) #simplify trees to points
+  trees3_centroids_proj <- trees3_centroids %>% 
+    select(Poly_ID, Genus_Merged, mean_pollen, sd_pollen, geom) %>% 
+    st_transform(., crs = 32618) 
+  
+  
+  #save the long file (includes point geometry)
+  st_write(trees3_centroids_proj, 
+           "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/tree_poly_prod_unclass_genera_260727.gpkg", driver = "GPKG")
+  
+  
+  

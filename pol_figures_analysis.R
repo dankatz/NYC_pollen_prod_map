@@ -317,6 +317,81 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
          units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
         
 
+  ###SI 3: a companion SI section for Fig. 2 for the taxa not included in the main text =========================================
+      #need to run fig. 2 first
+  
+        #create list of maps
+        focal_genus_panels <- c("Betula", "Gleditsia", "Populus", "Juglans", "Morus")
+        
+        map_list_1ha_sum <- map(focal_genus_panels, fun_sum_1ha_prod_map_genus)
+        map_list_1ha_sd <- map(focal_genus_panels, fun_sd_1ha_prod_map_genus)
+        
+        map_list <- c(map_list_1ha_sum, map_list_1ha_sd)
+        
+        p1 <- map_list_1ha_sum[[1]]
+        p2 <- map_list_1ha_sd[[1]]
+        p3 <- map_list_1ha_sum[[2]]
+        p4 <- map_list_1ha_sd[[2]]
+        p5 <- map_list_1ha_sum[[3]]
+        p6 <- map_list_1ha_sd[[3]]
+        p7 <- map_list_1ha_sum[[4]]
+        p8 <- map_list_1ha_sd[[4]]
+        p9 <- map_list_1ha_sum[[5]]
+        p10 <- map_list_1ha_sd[[5]]
+        
+        
+        # tighten spacing on the map panels only
+        maps <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
+        maps <- lapply(maps, function(p) p + theme(plot.margin = margin(1, 1, 1, 1)))
+        list2env(setNames(maps, paste0("p", 1:10)), envir = environment())
+        
+        # ggplot-based label helpers (avoid textGrob clipping issues)
+        make_row_label <- function(label, size = 12) {
+          ggplot() +
+            annotate("text", x = 0, y = 0, label = label, fontface = "italic", size = size / .pt, angle = 90) +
+            theme_void() +
+            theme(plot.margin = margin(0, 0, 0, 0))
+        }
+        
+        make_col_label <- function(label, size = 12) {
+          ggplot() +
+            annotate("text", x = 0, y = 0, label = label, fontface = "bold", size = size / .pt) +
+            theme_void() +
+            theme(plot.margin = margin(1, 2, 1, 2))  # a bit extra top/bottom so bold text doesn't clip
+        }
+        
+        row_label_1 <- make_row_label("Betula")
+        row_label_2 <- make_row_label("Gleditsia")
+        row_label_3 <- make_row_label("Populus")
+        row_label_4 <- make_row_label("Juglans")
+        row_label_5 <- make_row_label("Morus")
+        
+        col_label_1 <- make_col_label("Mean")
+        col_label_2 <- make_col_label("SD")
+        
+        # build each row: label + 2 maps, with the label column narrow
+        row_widths <- c(0.04, 1, 1)  # keep this identical everywhere it's used
+        
+        row1 <- row_label_1 + p1 + p2 + plot_layout(widths = row_widths)
+        row2 <- row_label_2 + p3 + p4 + plot_layout(widths = row_widths)
+        row3 <- row_label_3 + p5 + p6 + plot_layout(widths = row_widths)
+        row4 <- row_label_4 + p7 + p8 + plot_layout(widths = row_widths)
+        row5 <- row_label_5 + p9 + p10 + plot_layout(widths = row_widths)
+        
+        # top strip of column labels — spacer width MUST match row label column width
+        col_header <- plot_spacer() + col_label_1 + col_label_2 +
+          plot_layout(widths = row_widths)
+        
+        # stack it all together
+        final_plot <- col_header / row1 / row2 / row3 / row4 /row5 +
+          plot_layout(heights = c(0.05, 1, 1, 1, 1, 1))  # bumped up from 0.02
+        
+        final_plot
+        
+        ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/Fig_SI3_260727.tif",
+               units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
+        
+        
   
   
   
@@ -480,6 +555,78 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig3_260710.tif",
          units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
   
+  
+  ### SI 7: a version of Fig 3 with the other genera ========================================================================
+  #need to run fig 3 above first
+  #create list of maps
+  focal_genus_panels <- c("Betula", "Gleditsia", "Populus", "Juglans", "Morus")
+  
+  map_list_dist_mean <- map(focal_genus_panels, fun_neighborhood_pollen_map_genus)
+  map_list_dist_sd <- map(focal_genus_panels, fun_neighborhood_pollen_sd_map_genus)
+  
+  map_list <- c(map_list_dist_mean, map_list_dist_sd)
+  
+  p1 <- map_list_dist_mean[[1]]
+  p2 <- map_list_dist_sd[[1]]
+  p3 <- map_list_dist_mean[[2]]
+  p4 <- map_list_dist_sd[[2]]
+  p5 <- map_list_dist_mean[[3]]
+  p6 <- map_list_dist_sd[[3]]
+  p7 <- map_list_dist_mean[[4]]
+  p8 <- map_list_dist_sd[[4]]
+  p9 <- map_list_dist_mean[[5]]
+  p10 <- map_list_dist_sd[[5]]
+  
+  # tighten spacing on the map panels only
+  maps <- list(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
+  maps <- lapply(maps, function(p) p + theme(plot.margin = margin(1, 1, 1, 1)))
+  list2env(setNames(maps, paste0("p", 1:10)), envir = environment())
+  
+  # ggplot-based label helpers (avoid textGrob clipping issues)
+  make_row_label <- function(label, size = 12) {
+    ggplot() +
+      annotate("text", x = 0, y = 0, label = label, fontface = "italic", size = size / .pt, angle = 90) +
+      theme_void() +
+      theme(plot.margin = margin(0, 0, 0, 0))
+  }
+  
+  make_col_label <- function(label, size = 12) {
+    ggplot() +
+      annotate("text", x = 0, y = 0, label = label, fontface = "bold", size = size / .pt) +
+      theme_void() +
+      theme(plot.margin = margin(1, 2, 1, 2))  # a bit extra top/bottom so bold text doesn't clip
+  }
+  
+  row_label_1 <- make_row_label("Betula")
+  row_label_2 <- make_row_label("Gleditsia")
+  row_label_3 <- make_row_label("Populus")
+  row_label_4 <- make_row_label("Juglans")
+  row_label_5 <- make_row_label("Morus")
+  
+  col_label_1 <- make_col_label("Mean production within distance")
+  col_label_2 <- make_col_label("SD production within distance")
+  
+  # build each row: label + 2 maps, with the label column narrow
+  row_widths <- c(0.04, 1, 1)  # keep this identical everywhere it's used
+  
+  row1 <- row_label_1 + p1 + p2 + plot_layout(widths = row_widths)
+  row2 <- row_label_2 + p3 + p4 + plot_layout(widths = row_widths)
+  row3 <- row_label_3 + p5 + p6 + plot_layout(widths = row_widths)
+  row4 <- row_label_4 + p7 + p8 + plot_layout(widths = row_widths)
+  row5 <- row_label_5 + p9 + p10 + plot_layout(widths = row_widths)
+  
+  # top strip of column labels — spacer width MUST match row label column width
+  col_header <- plot_spacer() + col_label_1 + col_label_2 +
+    plot_layout(widths = row_widths)
+  
+  # stack it all together
+  final_plot <- col_header / row1 / row2 / row3 / row4 /row5 +
+    plot_layout(heights = c(0.05, 1, 1, 1, 1, 1))  # bumped up from 0.02
+  
+  final_plot
+  
+  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig_SI7_260727.tif",
+         units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
   
   
   
