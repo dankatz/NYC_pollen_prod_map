@@ -133,8 +133,13 @@ taub_f <- bind_rows(taub2013, taub2014) %>%
              n = sum(n)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) #%>%   filter(n > 1)
 
-
-
+    # #save a version for the UPPH26 analysis
+    #   st_write(taub_f,
+    #      "C:/Users/dsk273/Box/classes/plants and public health fall 2026/UPPH 26 class analysis/tauber_261030.gpkg", driver = "GPKG")
+    # 
+    #   st_write(tree_poly_pollen,
+    #            "C:/Users/dsk273/Box/classes/plants and public health fall 2026/UPPH 26 class analysis/tree_poly_prod_261030_beatrix.shp")
+      
 ### load in pollen production rasters ###############################
 
   #load in pollen production rasters

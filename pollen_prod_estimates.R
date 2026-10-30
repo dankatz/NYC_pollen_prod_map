@@ -40,6 +40,11 @@ trees_raw <- st_read("C:/Users/dsk273/Desktop/nyc_class_tree_genus_polygons_v2/n
   
   tr <- trees %>% st_drop_geometry() #remove the geometry column for faster processing times in the analysis
 
+      #trees for UPPH26 analysis
+        trees_26 <- trees_raw %>% 
+          mutate(tree_area_m  = round(TNC_SHAPE_Area * 0.092903, 2)) %>% #convert area to square meters from square feet
+          select(Poly_ID, Genus_Predicted, Genus_Ref, Species_Ref, tree_area_m, height_max_ft, height_med_ft, 
+               Acer, Betula, Gleditsia, Platanus, Quercus, Ulmus, geom) 
 
 ### create a lookup table for tree location and grid cell
   #get coordinates for each tree in EPSG 32618
@@ -425,11 +430,24 @@ for(k in 1:6){ #including uncertainty from classification
     st_write(trees3_centroids_proj, 
              "C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/tree_poly_prod_260710b.gpkg", driver = "GPKG")
   
+    #trees3_centroids_proj <- st_read("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/July26_reanalysis/tree_poly_prod_260710b.gpkg")
    
-  
-  
+    # #exporting a revised version with area for Xueying on 8/31/2026
+    # trees_no_sf <- trees |> st_drop_geometry()
+    # trees3_centroids_proj_with_area <- left_join(tr_export_centroids_proj_full, trees_no_sf) |> 
+    #   select(Poly_ID, Genus_Merged, mean_pollen, sd_pollen, tree_area)
+    # st_write(trees3_centroids_proj_with_area, 
+    #          "C:/Users/dsk273/Box/Katz lab/NYC/pollen production/tree_poly_prod_260710b_with_area.gpkg", driver = "GPKG")
+    
 
-      
+    # ## exporting a version for UPPH 26 analysis that includes: each tree polygon, pollen production per polygon
+    # trees3_centroids_proj_nosf <- trees3_centroids_proj |> st_drop_geometry()
+    # tree_poly_pollen <- left_join(trees_26, trees3_centroids_proj_nosf)
+    # st_write(tree_poly_pollen,
+    #          "C:/Users/dsk273/Box/classes/plants and public health fall 2026/UPPH 26 class analysis/tree_poly_prod_261030.gpkg", driver = "GPKG")
+    # st_write(tree_poly_pollen,
+    #          "C:/Users/dsk273/Box/classes/plants and public health fall 2026/UPPH 26 class analysis/tree_poly_prod_261030_beatrix.shp")
+    
 ### compare tree pollen production with and without tree classification data ###########################
   #reload data from previous step if necessary
   # tr_export_centroids_proj_full <- read_csv("C:/Users/dsk273/Box/classes/plants and public health fall 2025/class project analysis/NYC_pollen_prod_estimates_251125.csv")
