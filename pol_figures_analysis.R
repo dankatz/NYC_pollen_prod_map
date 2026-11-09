@@ -1,4 +1,5 @@
-# Project: Pollen production and exposure in NYC
+# Manuscript: Mapping allergenic pollen production and potential societal exposure from individual trees in New York City
+# Journal: Landscape and Urban Planning
 # Class: PLSCI 4450/6450 Urban Plants and Public Health
 # Contact: Dan Katz, Cornell University
 # 
@@ -18,7 +19,7 @@ library(tidyterra)
 library(ggspatial)
 library(basemaps)
 library(purrr)
-#library(cowplot) 
+library(cowplot) 
 library(patchwork)
 library(grid)
 
@@ -162,7 +163,21 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
       #nyc_boundary_box <- st_as_sf(st_as_sfc(st_bbox(nyc_boundary)), crs= 32618)
       # nyc_boundary_invert <- st_difference(nyc_boundary_box, nyc_boundary)
       
-      nyc_topo_rast <- basemap_raster(nyc_boundary, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+      # as of 11/9/26, Carto now requires an API key, so modifying the script here.
+          #ideally, the downstream uses should just use this same basemap download.
+      #nyc_topo_rast <- basemap_raster(nyc_boundary, map_service = "carto", map_type = "light_no_labels") #basemap_raster(nyc_boundary, map_service = "esri", map_type = "world_hillshade")
+     
+      # Carto light (no labels) tiles, with the API key added to each tile request
+      add_maptypes(map_service = "carto_key", map_type = "light_no_labels",
+                   url_endpoint = "https://basemaps.cartocdn.com/light_nolabels/",
+                   url_file_format = ".png",
+                   url_map_token = "?key=")
+
+      #options(basemaps.map_api = unique(get_maptypes(as_df = TRUE, url_cols = TRUE))) 
+      carto_key <- trimws(readLines("Carto_api_key.txt", warn = FALSE)[1])
+      nyc_topo_rast <- basemap_raster(nyc_boundary, map_service = "carto_key", map_type = "light_no_labels",
+                                map_token = carto_key)
+      
       nyc_topo_spatrast <- rast(nyc_topo_rast) #convert to spatrast for plotting 
       
   #function to create a map panel for: sum production per ha 
@@ -313,8 +328,8 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   final_plot
   
-  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig2_260710.tif",
-         units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
+  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/November 2026 submission/fig2_260710.png",
+         units = "in", height = 15, width = 8, dpi = 600)
         
 
   ###SI 3: a companion SI section for Fig. 2 for the taxa not included in the main text =========================================
@@ -552,8 +567,10 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
   
   final_plot
   
-  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig3_260710.tif",
-         units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
+  ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/November 2026 submission/fig3_260710.png",
+         units = "in", height = 15, width = 8, dpi = 600)
+  
+
   
   
   ### SI 7: a version of Fig 3 with the other genera ========================================================================
@@ -729,7 +746,7 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
         
         
         #final figure 
-        polpop_df_viz_sim %>% 
+       fig_4 <- polpop_df_viz_sim %>% 
         ggplot(aes(x = rank, y = pop_pol_sim + 1000000)) + 
           geom_hex(bins = 70, alpha = 0.8) +  #aes(alpha = after_stat(count))
           scale_fill_gradientn(colors = c("gray80", viridis::viridis(6, option = "plasma", direction = -1)), name = "Density") +
@@ -745,6 +762,9 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
                 legend.position = "inside",
                 legend.position.inside = c(0.95, 0.05),  # x, y as fraction of whole plot (right, bottom)
                 legend.justification = c(1, 0) )
+        
+        ggsave(fig_4, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/November 2026 submission/fig4_260710.png",
+               units = "in", height = 6.5, width = 7, dpi = 1000)
         
         
         #stat for paper: median value for each tree
@@ -831,11 +851,13 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
             panel.background = element_rect(fill = "white")) #+ ggtitle(focal_genus)
         
         #with the population density map as the first panel
-        plot_grid(plotlist = c(pop_den_map_panel, asthma_map_panel), ncol = 2,
+        fig_5 <- cowplot::plot_grid(plotlist = c(pop_den_map_panel, asthma_map_panel), ncol = 2,
                   labels = c( "A: population density", "B: people with asthma"),
                   label_x = 0.1, label_y = 1.01)
                 
-        
+        ggsave(fig_5, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/November 2026 submission/fig5_260710.png",
+               units = "in", height = 5, width = 7.5, dpi = 600)
+      
 ### fig 6: potential societal exposure map #####################################################################################
 
   ## load population density raster
@@ -1012,8 +1034,8 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
     
     final_plot
     
-    ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig6_260713.tif",
-           units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
+    ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/November 2026 submission/fig6_260713.png",
+           units = "in", height = 15, width = 8, dpi = 600)
     
     
         
@@ -1196,8 +1218,8 @@ ggplot(polpop, aes(x = tree_area, y = pop_pol + 1)) + geom_hex(name = "density")
     
     final_plot
     
-    ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/July 2026 submission/fig7_260713.tif",
-           units = "in", height = 15, width = 8, dpi = 300, compression = "lzw")
+    ggsave(final_plot, filename = "C:/Users/dsk273/Box/writing/UPPH 25 NYC pollen production/November 2026 submission/fig7_260713.png",
+           units = "in", height = 15, width = 8, dpi = 600)
     
         
         
